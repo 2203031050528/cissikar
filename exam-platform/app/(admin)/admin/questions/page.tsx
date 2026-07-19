@@ -37,124 +37,26 @@ import {
   AlertTriangle 
 } from "lucide-react"
 
-// Initial Dummy Questions Data
-const INITIAL_QUESTIONS = [
-  { 
-    id: "Q1", 
-    questionText: "What is the primary function of the CSS flexbox layout model?", 
-    options: {
-      A: "To build 3D transformations",
-      B: "To lay out items in one dimension (row or column)",
-      C: "To style database tables",
-      D: "To create web sockets connections"
-    },
-    correctAnswer: "B",
-    marks: 2,
-    subject: "Tech",
-    difficulty: "Easy"
-  },
-  { 
-    id: "Q2", 
-    questionText: "Which of the following is true about a binary search tree?", 
-    options: {
-      A: "Every node has exactly 3 children",
-      B: "The right child is always smaller than the parent",
-      C: "The left subtree contains only nodes with keys less than the parent node",
-      D: "It operates in O(N^2) average search time"
-    },
-    correctAnswer: "C",
-    marks: 4,
-    subject: "Tech",
-    difficulty: "Medium"
-  },
-  { 
-    id: "Q3", 
-    questionText: "Find the limit of (sin x) / x as x approaches 0.", 
-    options: {
-      A: "0",
-      B: "Infinity",
-      C: "1",
-      D: "Undefined"
-    },
-    correctAnswer: "C",
-    marks: 3,
-    subject: "Math",
-    difficulty: "Easy"
-  },
-  { 
-    id: "Q4", 
-    questionText: "Which chemical bond involves the sharing of electron pairs between atoms?", 
-    options: {
-      A: "Ionic bond",
-      B: "Covalent bond",
-      C: "Hydrogen bond",
-      D: "Metallic bond"
-    },
-    correctAnswer: "B",
-    marks: 2,
-    subject: "Science",
-    difficulty: "Easy"
-  },
-  { 
-    id: "Q5", 
-    questionText: "What is the primary role of a central bank in monetary policy?", 
-    options: {
-      A: "To finance startup companies directly",
-      B: "To regulate the money supply and interest rates",
-      C: "To determine corporate stock prices",
-      D: "To set global exchange standards"
-    },
-    correctAnswer: "B",
-    marks: 3,
-    subject: "Business",
-    difficulty: "Medium"
-  },
-  { 
-    id: "Q6", 
-    questionText: "In React, what hook is used to perform side effects in functional components?", 
-    options: {
-      A: "useState",
-      B: "useContext",
-      C: "useReducer",
-      D: "useEffect"
-    },
-    correctAnswer: "D",
-    marks: 2,
-    subject: "Tech",
-    difficulty: "Easy"
-  },
-  { 
-    id: "Q7", 
-    questionText: "Solve the derivative of f(x) = 3x^2 + 5x - 9 with respect to x.", 
-    options: {
-      A: "6x",
-      B: "6x + 5",
-      C: "3x + 5",
-      D: "6x - 9"
-    },
-    correctAnswer: "B",
-    marks: 4,
-    subject: "Math",
-    difficulty: "Medium"
-  },
-  { 
-    id: "Q8", 
-    questionText: "Which of the following acts as the powerhouse of eukaryotic cells?", 
-    options: {
-      A: "Ribosome",
-      B: "Lysosome",
-      C: "Mitochondria",
-      D: "Nucleus"
-    },
-    correctAnswer: "C",
-    marks: 3,
-    subject: "Science",
-    difficulty: "Hard"
+import { getQuestions, createQuestion, updateQuestion, deleteQuestion, uploadQuestionsCSV } from "@/app/actions/questions"
+
+interface Question {
+  id: string
+  questionText: string
+  options: {
+    A: string
+    B: string
+    C: string
+    D: string
   }
-]
+  correctAnswer: string
+  marks: number
+  subject: string
+  difficulty: string
+}
 
 export default function QuestionBankPage() {
-  const [questions, setQuestions] = React.useState(INITIAL_QUESTIONS)
+  const [questions, setQuestions] = React.useState<Question[]>([])
+  const [isLoading, setIsLoading] = React.useState(true)
   const [search, setSearch] = React.useState("")
   const [subjectFilter, setSubjectFilter] = React.useState("All")
   const [difficultyFilter, setDifficultyFilter] = React.useState("All")
@@ -168,7 +70,7 @@ export default function QuestionBankPage() {
   const [isEditOpen, setIsEditOpen] = React.useState(false)
   const [isDeleteOpen, setIsDeleteOpen] = React.useState(false)
   const [isUploadOpen, setIsUploadOpen] = React.useState(false)
-  const [targetQuestion, setTargetQuestion] = React.useState<typeof INITIAL_QUESTIONS[0] | null>(null)
+  const [targetQuestion, setTargetQuestion] = React.useState<Question | null>(null)
   
   // Form states
   const [formData, setFormData] = React.useState({
@@ -182,6 +84,23 @@ export default function QuestionBankPage() {
     subject: "Tech",
     difficulty: "Easy"
   })
+
+  const loadQuestions = async () => {
+    setIsLoading(true)
+    try {
+      const data = await getQuestions()
+      setQuestions(data)
+    } catch (err: any) {
+      console.error(err)
+      alert(err.message || "Failed to load questions.")
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  React.useEffect(() => {
+    loadQuestions()
+  }, [])
 
   // Filter & Search Logic
   const filteredQuestions = React.useMemo(() => {
@@ -236,7 +155,7 @@ export default function QuestionBankPage() {
   }
 
   // Add Question Submission
-  const handleAddSubmit = (e: React.FormEvent) => {
+  const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
     if (
@@ -250,28 +169,30 @@ export default function QuestionBankPage() {
       return
     }
 
-    const newQuestion = {
-      id: `Q${questions.length + 1}`,
-      questionText: formData.questionText,
-      options: {
-        A: formData.optionA,
-        B: formData.optionB,
-        C: formData.optionC,
-        D: formData.optionD
-      },
-      correctAnswer: formData.correctAnswer,
-      marks: Number(formData.marks) || 2,
-      subject: formData.subject,
-      difficulty: formData.difficulty
+    setIsLoading(true)
+    try {
+      await createQuestion({
+        questionText: formData.questionText,
+        optionA: formData.optionA,
+        optionB: formData.optionB,
+        optionC: formData.optionC,
+        optionD: formData.optionD,
+        correctAnswer: formData.correctAnswer,
+        marks: formData.marks,
+        subject: formData.subject,
+      })
+      setIsAddOpen(false)
+      resetForm()
+      await loadQuestions()
+    } catch (err: any) {
+      console.error(err)
+      alert(err.message || "Failed to create question.")
+      setIsLoading(false)
     }
-
-    setQuestions([newQuestion, ...questions])
-    setIsAddOpen(false)
-    resetForm()
   }
 
   // Open Edit Dialog
-  const handleOpenEdit = (q: typeof INITIAL_QUESTIONS[0]) => {
+  const handleOpenEdit = (q: Question) => {
     setTargetQuestion(q)
     setFormData({
       questionText: q.questionText,
@@ -288,7 +209,7 @@ export default function QuestionBankPage() {
   }
 
   // Submit Edit
-  const handleEditSubmit = (e: React.FormEvent) => {
+  const handleEditSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!targetQuestion) return
 
@@ -303,50 +224,83 @@ export default function QuestionBankPage() {
       return
     }
 
-    const updated = questions.map((q) => {
-      if (q.id === targetQuestion.id) {
-        return {
-          ...q,
-          questionText: formData.questionText,
-          options: {
-            A: formData.optionA,
-            B: formData.optionB,
-            C: formData.optionC,
-            D: formData.optionD
-          },
-          correctAnswer: formData.correctAnswer,
-          marks: Number(formData.marks) || 2,
-          subject: formData.subject,
-          difficulty: formData.difficulty
-        }
-      }
-      return q
-    })
-
-    setQuestions(updated)
-    setIsEditOpen(false)
-    resetForm()
+    setIsLoading(true)
+    try {
+      await updateQuestion(targetQuestion.id, {
+        questionText: formData.questionText,
+        optionA: formData.optionA,
+        optionB: formData.optionB,
+        optionC: formData.optionC,
+        optionD: formData.optionD,
+        correctAnswer: formData.correctAnswer,
+        marks: formData.marks,
+        subject: formData.subject,
+      })
+      setIsEditOpen(false)
+      resetForm()
+      await loadQuestions()
+    } catch (err: any) {
+      console.error(err)
+      alert(err.message || "Failed to update question.")
+      setIsLoading(false)
+    }
   }
 
   // Open Delete Confirm
-  const handleOpenDelete = (q: typeof INITIAL_QUESTIONS[0]) => {
+  const handleOpenDelete = (q: Question) => {
     setTargetQuestion(q)
     setIsDeleteOpen(true)
   }
 
   // Confirm Delete
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = async () => {
     if (!targetQuestion) return
-    setQuestions(questions.filter((q) => q.id !== targetQuestion.id))
-    setIsDeleteOpen(false)
-    setTargetQuestion(null)
+    setIsLoading(true)
+    try {
+      await deleteQuestion(targetQuestion.id)
+      setIsDeleteOpen(false)
+      setTargetQuestion(null)
+      await loadQuestions()
+    } catch (err: any) {
+      console.error(err)
+      alert(err.message || "Failed to delete question.")
+      setIsLoading(false)
+    }
   }
 
-  // Mock CSV parse
-  const handleCSVUpload = (e: React.FormEvent) => {
+  // CSV file reading and parsing
+  const handleCSVUpload = async (e: React.FormEvent) => {
     e.preventDefault()
-    setIsUploadOpen(false)
-    alert("Mock CSV uploaded successfully! 5 questions parsed and added to pool.")
+    const input = document.getElementById("csv-input") as HTMLInputElement
+    const file = input?.files?.[0]
+    if (!file) {
+      alert("Please select a CSV file first.")
+      return
+    }
+
+    const reader = new FileReader()
+    reader.onload = async (evt) => {
+      const text = evt.target?.result as string
+      if (!text) return
+
+      setIsLoading(true)
+      try {
+        const res = await uploadQuestionsCSV(text)
+        if (res.success) {
+          alert(`Successfully uploaded ${res.count} questions.`)
+          setIsUploadOpen(false)
+          await loadQuestions()
+        } else {
+          alert("No valid questions found in CSV.")
+        }
+      } catch (err: any) {
+        console.error(err)
+        alert(err.message || "Failed to upload CSV.")
+      } finally {
+        setIsLoading(false)
+      }
+    }
+    reader.readAsText(file)
   }
 
   return (
@@ -445,7 +399,12 @@ export default function QuestionBankPage() {
       {/* Questions Data Table */}
       <Card className="border shadow-xs overflow-hidden">
         <CardContent className="p-0">
-          {filteredQuestions.length === 0 ? (
+          {isLoading ? (
+            <div className="h-64 flex flex-col items-center justify-center gap-3">
+              <Loader size="lg" />
+              <span className="text-xs text-muted-foreground animate-pulse">Loading question bank...</span>
+            </div>
+          ) : filteredQuestions.length === 0 ? (
             <div className="h-64 flex flex-col items-center justify-center gap-2 text-muted-foreground">
               <HelpCircle className="size-8 stroke-1" />
               <span className="font-semibold text-sm">No questions match your filter query.</span>

@@ -18,35 +18,9 @@ import {
   TrendingUp
 } from "lucide-react"
 
-// --- Fake Data ---
-
-const CARDS_DATA = {
-  students: { total: "1,482", active: "1,420", label: "Registered Students", growth: "+8.2% vs last month" },
-  questions: { total: "4,250", active: "4,100", label: "Question Pool Bank", growth: "+120 new questions" },
-  exams: { total: "36", active: "4 Live Now", label: "Created Assessments", growth: "6 scheduled this week" },
-  results: { average: "82.4%", passRate: "91.2%", label: "Average Performance", growth: "+1.4% improvement" }
-}
-
-const RECENT_EXAMS = [
-  { code: "CS101", title: "Introduction to Computer Science", questions: 50, date: "July 16, 2026", duration: "90m", takers: 142 },
-  { code: "MATH301", title: "Advanced Calculus & Linear Algebra", questions: 30, date: "July 15, 2026", duration: "120m", takers: 98 },
-  { code: "CHEM220", title: "Organic Chemistry Foundations", questions: 40, date: "July 12, 2026", duration: "120m", takers: 75 },
-  { code: "CS210", title: "Web Development Essentials", questions: 35, date: "July 10, 2026", duration: "90m", takers: 110 },
-]
-
-const RECENT_STUDENTS = [
-  { roll: "20264012", name: "Sarah Jenkins", email: "sarah.j@cissikar.edu", regDate: "July 16, 2026", status: "Active" },
-  { roll: "20264011", name: "Michael Chen", email: "m.chen@cissikar.edu", regDate: "July 15, 2026", status: "Active" },
-  { roll: "20264010", name: "David Miller", email: "d.miller@cissikar.edu", regDate: "July 14, 2026", status: "Active" },
-  { roll: "20264009", name: "Emma Watson", email: "e.watson@cissikar.edu", regDate: "July 14, 2026", status: "Pending" },
-]
-
-const RECENT_RESULTS = [
-  { student: "Sarah Jenkins", code: "CS101", score: "88%", maxScore: "100%", date: "July 16, 2026", outcome: "Pass" },
-  { student: "David Miller", code: "CHEM220", score: "92%", maxScore: "100%", date: "July 14, 2026", outcome: "Pass" },
-  { student: "Clara Oswald", code: "CS210", score: "64%", maxScore: "100%", date: "July 11, 2026", outcome: "Fail" },
-  { student: "Bob Martin", code: "MATH301", score: "78%", maxScore: "100%", date: "July 10, 2026", outcome: "Pass" },
-]
+import { getAdminMetrics } from "@/app/actions/exams"
+import { useRouter } from "next/navigation"
+import { Loader } from "@/components/ui/loader"
 
 const CHART_DATA = [
   { month: "Jan", score: 72 },
@@ -59,6 +33,38 @@ const CHART_DATA = [
 ]
 
 export default function AdminDashboardPage() {
+  const router = useRouter()
+  const [data, setData] = React.useState<any>(null)
+  const [isLoading, setIsLoading] = React.useState(true)
+
+  React.useEffect(() => {
+    async function fetchMetrics() {
+      setIsLoading(true)
+      try {
+        const res = await getAdminMetrics()
+        setData(res)
+      } catch (err) {
+        console.error("Failed to fetch admin metrics", err)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+    fetchMetrics()
+  }, [])
+
+  if (isLoading || !data) {
+    return (
+      <div className="h-96 flex flex-col items-center justify-center gap-3">
+        <Loader size="lg" />
+        <span className="text-sm font-medium text-muted-foreground animate-pulse">
+          Retrieving admin dashboard metrics...
+        </span>
+      </div>
+    )
+  }
+
+  const { metrics, recentExams, recentStudents, recentResults } = data
+
   return (
     <div className="space-y-8">
       
@@ -69,10 +75,10 @@ export default function AdminDashboardPage() {
           <p className="text-sm text-muted-foreground">Comprehensive system metrics and activity insights for the Cissikar Exam Platform.</p>
         </div>
         <div className="flex gap-2">
-          <Button size="sm" variant="outline" className="cursor-pointer">
-            Export Logs
+          <Button size="sm" variant="outline" className="cursor-pointer" onClick={() => window.print()}>
+            Print / Export
           </Button>
-          <Button size="sm" className="cursor-pointer gap-2">
+          <Button size="sm" className="cursor-pointer gap-2" onClick={() => router.push("/admin/exams")}>
             <Plus className="size-4" />
             <span>Create Exam</span>
           </Button>
@@ -85,16 +91,16 @@ export default function AdminDashboardPage() {
         {/* Students Card */}
         <Card className="border shadow-xs">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{CARDS_DATA.students.label}</span>
+            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Registered Students</span>
             <div className="p-2 rounded-lg text-blue-500 bg-blue-500/10">
               <Users className="size-4" />
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold tracking-tight">{CARDS_DATA.students.total}</div>
+            <div className="text-2xl font-bold tracking-tight">{metrics.studentsTotal}</div>
             <div className="flex items-center gap-1.5 mt-1.5">
-              <span className="text-[10px] text-emerald-500 font-semibold bg-emerald-500/10 px-1 py-0.5 rounded-sm">{CARDS_DATA.students.growth}</span>
-              <span className="text-[10px] text-muted-foreground">({CARDS_DATA.students.active} active)</span>
+              <span className="text-[10px] text-emerald-500 font-semibold bg-emerald-500/10 px-1 py-0.5 rounded-sm">+100% active</span>
+              <span className="text-[10px] text-muted-foreground">({metrics.studentsActive} took exams)</span>
             </div>
           </CardContent>
         </Card>
@@ -102,16 +108,16 @@ export default function AdminDashboardPage() {
         {/* Questions Card */}
         <Card className="border shadow-xs">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{CARDS_DATA.questions.label}</span>
+            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Question Pool Bank</span>
             <div className="p-2 rounded-lg text-amber-500 bg-amber-500/10">
               <FileQuestion className="size-4" />
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold tracking-tight">{CARDS_DATA.questions.total}</div>
+            <div className="text-2xl font-bold tracking-tight">{metrics.questionsTotal}</div>
             <div className="flex items-center gap-1.5 mt-1.5">
-              <span className="text-[10px] text-amber-500 font-semibold bg-amber-500/10 px-1 py-0.5 rounded-sm">{CARDS_DATA.questions.growth}</span>
-              <span className="text-[10px] text-muted-foreground">({CARDS_DATA.questions.active} verified)</span>
+              <span className="text-[10px] text-amber-500 font-semibold bg-amber-500/10 px-1 py-0.5 rounded-sm">Verified</span>
+              <span className="text-[10px] text-muted-foreground">({metrics.questionsTotal} active)</span>
             </div>
           </CardContent>
         </Card>
@@ -119,16 +125,15 @@ export default function AdminDashboardPage() {
         {/* Exams Card */}
         <Card className="border shadow-xs">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{CARDS_DATA.exams.label}</span>
+            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Created Assessments</span>
             <div className="p-2 rounded-lg text-emerald-500 bg-emerald-500/10">
               <GraduationCap className="size-4" />
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold tracking-tight">{CARDS_DATA.exams.total}</div>
+            <div className="text-2xl font-bold tracking-tight">{metrics.examsTotal}</div>
             <div className="flex items-center gap-1.5 mt-1.5">
-              <span className="text-[10px] text-emerald-500 font-semibold bg-emerald-500/10 px-1 py-0.5 rounded-sm">{CARDS_DATA.exams.growth}</span>
-              <span className="text-[10px] text-muted-foreground">({CARDS_DATA.exams.active})</span>
+              <span className="text-[10px] text-emerald-500 font-semibold bg-emerald-500/10 px-1 py-0.5 rounded-sm">{metrics.examsActive}</span>
             </div>
           </CardContent>
         </Card>
@@ -136,16 +141,15 @@ export default function AdminDashboardPage() {
         {/* Results Card */}
         <Card className="border shadow-xs">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{CARDS_DATA.results.label}</span>
+            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Average Performance</span>
             <div className="p-2 rounded-lg text-purple-500 bg-purple-500/10">
               <Award className="size-4" />
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold tracking-tight">{CARDS_DATA.results.average}</div>
+            <div className="text-2xl font-bold tracking-tight">{metrics.averagePerformance}</div>
             <div className="flex items-center gap-1.5 mt-1.5">
-              <span className="text-[10px] text-purple-500 font-semibold bg-purple-500/10 px-1 py-0.5 rounded-sm">{CARDS_DATA.results.growth}</span>
-              <span className="text-[10px] text-muted-foreground">({CARDS_DATA.results.passRate} pass rate)</span>
+              <span className="text-[10px] text-purple-500 font-semibold bg-purple-500/10 px-1 py-0.5 rounded-sm">{metrics.passRate} pass rate</span>
             </div>
           </CardContent>
         </Card>
@@ -219,7 +223,7 @@ export default function AdminDashboardPage() {
 
               {/* X-Axis Labels */}
               <div className="absolute left-[40px] right-0 bottom-0 flex justify-between px-1 text-[10px] text-muted-foreground font-semibold">
-                {CHART_DATA.map((d, index) => (
+                {CHART_DATA.map((d: any, index: number) => (
                   <span key={index}>{d.month}</span>
                 ))}
               </div>
@@ -249,7 +253,7 @@ export default function AdminDashboardPage() {
           </CardHeader>
           <CardContent className="p-0 border-t">
             <div className="divide-y">
-              {RECENT_RESULTS.map((res, i) => (
+              {recentResults.map((res: any, i: number) => (
                 <div key={i} className="p-3.5 flex items-center justify-between hover:bg-muted/10 transition-colors">
                   <div className="space-y-1">
                     <p className="text-xs font-semibold text-foreground leading-none">{res.student}</p>
@@ -300,12 +304,12 @@ export default function AdminDashboardPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {RECENT_EXAMS.map((exam) => (
+                {recentExams.map((exam: any) => (
                   <TableRow key={exam.code} className="hover:bg-muted/30 transition-colors">
                     <TableCell className="font-mono font-bold text-xs text-muted-foreground">{exam.code}</TableCell>
                     <TableCell className="font-medium text-xs">{exam.title}</TableCell>
                     <TableCell className="text-xs text-muted-foreground">{exam.duration}</TableCell>
-                    <TableCell className="text-right text-xs font-semibold text-foreground">{exam.takers}</TableCell>
+                    <TableCell className="text-right text-xs font-semibold text-foreground">{exam.takers} takers</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -335,7 +339,7 @@ export default function AdminDashboardPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {RECENT_STUDENTS.map((student) => (
+                {recentStudents.map((student: any) => (
                   <TableRow key={student.roll} className="hover:bg-muted/30 transition-colors">
                     <TableCell className="font-mono text-xs text-muted-foreground">{student.roll}</TableCell>
                     <TableCell className="font-medium text-xs">

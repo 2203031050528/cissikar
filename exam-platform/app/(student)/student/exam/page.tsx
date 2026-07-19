@@ -20,139 +20,37 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
-// Exam Question Set (10 questions)
-const EXAM_QUESTIONS = [
-  {
-    id: "Q1",
-    num: 1,
-    text: "What is the primary function of the CSS flexbox layout model?",
-    options: {
-      A: "To build 3D transformations and shadow elevations",
-      B: "To lay out items in one dimension (as a row or a column)",
-      C: "To style structural backend database tables",
-      D: "To facilitate real-time WebSocket communication sessions"
-    },
-    marks: 2
-  },
-  {
-    id: "Q2",
-    num: 2,
-    text: "Which of the following is true about a binary search tree?",
-    options: {
-      A: "Every node in the tree has exactly three children",
-      B: "The right child of a node is always smaller than its parent node",
-      C: "The left subtree of a node contains only nodes with keys less than the parent node's key",
-      D: "It operates in O(N^2) average search time complexity"
-    },
-    marks: 3
-  },
-  {
-    id: "Q3",
-    num: 3,
-    text: "Find the mathematical limit of (sin x) / x as x approaches 0.",
-    options: {
-      A: "0",
-      B: "Infinity",
-      C: "1",
-      D: "Undefined"
-    },
-    marks: 2
-  },
-  {
-    id: "Q4",
-    num: 4,
-    text: "Which chemical bond involves the sharing of electron pairs between atoms?",
-    options: {
-      A: "Ionic bond structure",
-      B: "Covalent bond structure",
-      C: "Hydrogen bond connection",
-      D: "Metallic lattice bond"
-    },
-    marks: 2
-  },
-  {
-    id: "Q5",
-    num: 5,
-    text: "What is the primary role of a central bank in monetary policy?",
-    options: {
-      A: "To finance start-up companies directly through seed investments",
-      B: "To regulate the money supply, print currency, and set target interest rates",
-      C: "To determine individual corporate stock market pricing values",
-      D: "To set global exchange currency conversion standards"
-    },
-    marks: 3
-  },
-  {
-    id: "Q6",
-    num: 6,
-    text: "In React, what hook is used to perform side effects in functional components?",
-    options: {
-      A: "useState",
-      B: "useContext",
-      C: "useReducer",
-      D: "useEffect"
-    },
-    marks: 2
-  },
-  {
-    id: "Q7",
-    num: 7,
-    text: "Solve the derivative of f(x) = 3x^2 + 5x - 9 with respect to x.",
-    options: {
-      A: "6x",
-      B: "6x + 5",
-      C: "3x + 5",
-      D: "6x - 9"
-    },
-    marks: 4
-  },
-  {
-    id: "Q8",
-    num: 8,
-    text: "Which of the following organelle structures acts as the powerhouse of eukaryotic cells?",
-    options: {
-      A: "Ribosome",
-      B: "Lysosome",
-      C: "Mitochondria",
-      D: "Nucleus"
-    },
-    marks: 2
-  },
-  {
-    id: "Q9",
-    num: 9,
-    text: "Which SQL clause is used to filter records in a group based on aggregate functions?",
-    options: {
-      A: "WHERE",
-      B: "HAVING",
-      C: "GROUP BY",
-      D: "ORDER BY"
-    },
-    marks: 3
-  },
-  {
-    id: "Q10",
-    num: 10,
-    text: "What is the key objective of the HTTP POST request method?",
-    options: {
-      A: "To retrieve resource data from a server safely without changes",
-      B: "To submit data to be processed and create/update a resource on the server",
-      C: "To delete an existing file or resource from the server storage",
-      D: "To test the latency and reachability of the destination host"
-    },
-    marks: 2
+import { getAttempt, saveResponse, submitAttempt } from "@/app/actions/exams"
+import { useSearchParams } from "next/navigation"
+
+interface Question {
+  id: string
+  num: number
+  text: string
+  options: {
+    A: string
+    B: string
+    C: string
+    D: string
   }
-]
+  marks: number
+}
 
 export default function ExamScreenPage() {
   const router = useRouter()
-  
-  // Active Question
-  const [currentIndex, setCurrentIndex] = React.useState(0)
-  const currentQuestion = EXAM_QUESTIONS[currentIndex]
+  const searchParams = useSearchParams()
+  const attemptId = searchParams.get("attemptId")
 
-  // Timer: 45 Minutes (2700 Seconds)
-  const [timeLeft, setTimeLeft] = React.useState(2700)
+  const [exam, setExam] = React.useState<any>(null)
+  const [questions, setQuestions] = React.useState<Question[]>([])
+  const [isLoading, setIsLoading] = React.useState(true)
+  
+  // Active Question Index
+  const [currentIndex, setCurrentIndex] = React.useState(0)
+  const currentQuestion = questions[currentIndex]
+
+  // Timer: Seconds Left
+  const [timeLeft, setTimeLeft] = React.useState(0)
   
   // Student Answers Store { questionId: selectedOptionA/B/C/D }
   const [answers, setAnswers] = React.useState<{ [key: string]: string }>({})
@@ -161,7 +59,7 @@ export default function ExamScreenPage() {
   const [markedForReview, setMarkedForReview] = React.useState<string[]>([])
   
   // Visited Tracker
-  const [visited, setVisited] = React.useState<string[]>(["Q1"])
+  const [visited, setVisited] = React.useState<string[]>([])
 
   // Auto-save Indicator state
   const [saveStatus, setSaveStatus] = React.useState<"saved" | "saving">("saved")
@@ -171,41 +69,73 @@ export default function ExamScreenPage() {
   const [isSubmitOpen, setIsSubmitOpen] = React.useState(false)
   const [isSubmitting, setIsSubmitting] = React.useState(false)
 
+  // Load Exam Attempt Data
+  React.useEffect(() => {
+    if (!attemptId) {
+      router.push("/student")
+      return
+    }
+
+    async function loadAttemptData() {
+      setIsLoading(true)
+      try {
+        const data = await getAttempt(attemptId!)
+        setExam(data.exam)
+        setQuestions(data.questions as Question[])
+        setAnswers(data.answers)
+        
+        // Calculate remaining seconds
+        const deadline = new Date(data.attempt.deadline).getTime()
+        const now = new Date().getTime()
+        const diffSecs = Math.max(0, Math.floor((deadline - now) / 1000))
+        setTimeLeft(diffSecs)
+        
+        if (data.questions.length > 0) {
+          setVisited([data.questions[0].id])
+        }
+      } catch (err: any) {
+        console.error(err)
+        alert(err.message || "Failed to load active exam attempt.")
+        router.push("/student")
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    loadAttemptData()
+  }, [attemptId, router])
+
   // Countdown timer trigger
   React.useEffect(() => {
+    if (isLoading || timeLeft === 0) return
+
     if (timeLeft <= 0) {
       handleAutoSubmit()
       return
     }
 
     const timer = setInterval(() => {
-      setTimeLeft(prev => prev - 1)
+      setTimeLeft(prev => {
+        if (prev <= 1) {
+          clearInterval(timer)
+          handleAutoSubmit()
+          return 0
+        }
+        return prev - 1
+      })
     }, 1000)
 
     return () => clearInterval(timer)
-  }, [timeLeft])
+  }, [timeLeft, isLoading])
 
   // Track visited questions when index changes
   React.useEffect(() => {
+    if (!currentQuestion) return
     const qId = currentQuestion.id
     if (!visited.includes(qId)) {
       setVisited(prev => [...prev, qId])
     }
-  }, [currentIndex, currentQuestion])
-
-  // Mock auto-save effect mimicking database updates every 10 seconds
-  React.useEffect(() => {
-    const interval = setInterval(() => {
-      setSaveStatus("saving")
-      setTimeout(() => {
-        setSaveStatus("saved")
-        const now = new Date()
-        setLastSavedTime(now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }))
-      }, 800)
-    }, 15000)
-
-    return () => clearInterval(interval)
-  }, [])
+  }, [currentIndex, currentQuestion, visited])
 
   // Time Formatter
   const formatTime = (seconds: number) => {
@@ -215,22 +145,31 @@ export default function ExamScreenPage() {
   }
 
   // Answer picking
-  const handleSelectOption = (option: string) => {
+  const handleSelectOption = async (option: string) => {
+    if (!attemptId || !currentQuestion) return
+
+    // Set UI state immediately
     setAnswers(prev => ({
       ...prev,
       [currentQuestion.id]: option
     }))
     
-    // Auto-save feedback on action
     setSaveStatus("saving")
-    setTimeout(() => {
+    try {
+      await saveResponse(attemptId, currentQuestion.id, option)
       setSaveStatus("saved")
-      setLastSavedTime("Just now")
-    }, 400)
+      const now = new Date()
+      setLastSavedTime(now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }))
+    } catch (err: any) {
+      console.error(err)
+      setSaveStatus("saved")
+      alert(err.message || "Failed to save response. Check connection.")
+    }
   }
 
   // Toggle Marked for review
   const handleToggleReview = () => {
+    if (!currentQuestion) return
     const qId = currentQuestion.id
     setMarkedForReview(prev =>
       prev.includes(qId) ? prev.filter(id => id !== qId) : [...prev, qId]
@@ -238,12 +177,26 @@ export default function ExamScreenPage() {
   }
 
   // Clear answer choice
-  const handleClearAnswer = () => {
+  const handleClearAnswer = async () => {
+    if (!attemptId || !currentQuestion) return
+
     setAnswers(prev => {
       const updated = { ...prev }
       delete updated[currentQuestion.id]
       return updated
     })
+
+    setSaveStatus("saving")
+    try {
+      await saveResponse(attemptId, currentQuestion.id, null)
+      setSaveStatus("saved")
+      const now = new Date()
+      setLastSavedTime(now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }))
+    } catch (err: any) {
+      console.error(err)
+      setSaveStatus("saved")
+      alert(err.message || "Failed to clear response.")
+    }
   }
 
   // Palette item helper to figure out node status classes
@@ -262,7 +215,7 @@ export default function ExamScreenPage() {
 
   // Next / Prev Actions
   const handleNext = () => {
-    if (currentIndex < EXAM_QUESTIONS.length - 1) {
+    if (currentIndex < questions.length - 1) {
       setCurrentIndex(prev => prev + 1)
     }
   }
@@ -277,7 +230,7 @@ export default function ExamScreenPage() {
   const examStats = React.useMemo(() => {
     const answeredCount = Object.keys(answers).length
     const reviewCount = markedForReview.length
-    const unvisitedCount = EXAM_QUESTIONS.length - visited.length
+    const unvisitedCount = questions.length - visited.length
     const visitedNotAnswered = visited.length - answeredCount
     
     return {
@@ -286,27 +239,53 @@ export default function ExamScreenPage() {
       notAnswered: Math.max(0, visitedNotAnswered),
       unvisited: unvisitedCount
     }
-  }, [answers, markedForReview, visited])
+  }, [answers, markedForReview, visited, questions])
 
   // Submit action triggers
   const handleManualSubmit = () => {
     setIsSubmitOpen(true)
   }
 
-  const handleConfirmSubmit = () => {
+  const handleConfirmSubmit = async () => {
+    if (!attemptId) return
     setIsSubmitting(true)
-    setTimeout(() => {
-      setIsSubmitting(false)
+    try {
+      await submitAttempt(attemptId, false)
       setIsSubmitOpen(false)
-      alert("Exam submitted successfully! Results are being processed.")
+      alert("Exam submitted successfully!")
       router.push("/student")
-    }, 2000)
+    } catch (err: any) {
+      console.error(err)
+      alert(err.message || "Failed to submit exam attempt.")
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
-  const handleAutoSubmit = () => {
-    alert("Time limit reached! Your responses are auto-saved and submitted.")
-    router.push("/student")
+  const handleAutoSubmit = async () => {
+    if (!attemptId) return
+    try {
+      await submitAttempt(attemptId, true)
+      alert("Time limit reached! Your responses were auto-submitted.")
+    } catch (err) {
+      console.error("Auto submit failed:", err)
+    } finally {
+      router.push("/student")
+    }
   }
+
+  if (isLoading || !exam || questions.length === 0) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-background gap-4">
+        <Loader size="lg" />
+        <span className="text-sm font-medium text-muted-foreground animate-pulse">
+          Loading secure exam window environment...
+        </span>
+      </div>
+    )
+  }
+
+
 
   return (
     <div className="min-h-screen flex flex-col bg-background text-foreground">
@@ -318,7 +297,7 @@ export default function ExamScreenPage() {
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
             <span className="font-heading font-bold text-base bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
-              CS101 Midterm assessment
+              {exam?.title}
             </span>
           </div>
 
@@ -369,7 +348,7 @@ export default function ExamScreenPage() {
           <CardHeader className="pb-3 border-b flex flex-row items-center justify-between">
             <div className="space-y-0.5">
               <CardTitle className="text-sm font-bold text-muted-foreground uppercase tracking-wider">
-                Question {currentQuestion.num} of {EXAM_QUESTIONS.length}
+                Question {currentQuestion.num} of {questions.length}
               </CardTitle>
               <CardDescription className="text-xs">
                 Marks Weight: <strong className="text-foreground">{currentQuestion.marks} Marks</strong>
@@ -465,7 +444,7 @@ export default function ExamScreenPage() {
               variant="default"
               size="sm"
               onClick={handleNext}
-              disabled={currentIndex === EXAM_QUESTIONS.length - 1}
+              disabled={currentIndex === questions.length - 1}
               className="cursor-pointer gap-1.5"
             >
               <span>Next</span>
@@ -488,7 +467,7 @@ export default function ExamScreenPage() {
               
               {/* Numbers Grid */}
               <div className="grid grid-cols-5 gap-2">
-                {EXAM_QUESTIONS.map((q, idx) => (
+                {questions.map((q, idx) => (
                   <button
                     key={q.id}
                     onClick={() => setCurrentIndex(idx)}
@@ -533,7 +512,7 @@ export default function ExamScreenPage() {
             <CardContent className="p-4 space-y-3 text-xs">
               <div className="flex justify-between items-center">
                 <span className="text-muted-foreground">Answered:</span>
-                <span className="font-bold text-emerald-500">{examStats.answered} / {EXAM_QUESTIONS.length}</span>
+                <span className="font-bold text-emerald-500">{examStats.answered} / {questions.length}</span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-muted-foreground">Marked for Review:</span>
@@ -570,7 +549,7 @@ export default function ExamScreenPage() {
           <div className="border rounded-lg p-3 bg-muted/40 text-xs space-y-2">
             <div className="flex justify-between">
               <span className="text-muted-foreground">Total Questions:</span>
-              <span className="font-bold text-foreground">{EXAM_QUESTIONS.length}</span>
+              <span className="font-bold text-foreground">{questions.length}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Answered responses:</span>
@@ -582,7 +561,7 @@ export default function ExamScreenPage() {
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Not answered:</span>
-              <span className="font-bold text-destructive">{EXAM_QUESTIONS.length - examStats.answered}</span>
+              <span className="font-bold text-destructive">{questions.length - examStats.answered}</span>
             </div>
           </div>
 

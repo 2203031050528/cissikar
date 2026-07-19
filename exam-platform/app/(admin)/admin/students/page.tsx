@@ -38,20 +38,21 @@ import {
   AlertTriangle 
 } from "lucide-react"
 
-// Initial Dummy Students Data
-const INITIAL_STUDENTS = [
-  { id: "1", rollNumber: "20264001", name: "Sarah Jenkins", email: "sarah.j@cissikar.edu", branch: "Tech", status: "Active", joinDate: "Jan 12, 2026" },
-  { id: "2", rollNumber: "20264002", name: "Michael Chen", email: "m.chen@cissikar.edu", branch: "Math", status: "Active", joinDate: "Jan 15, 2026" },
-  { id: "3", rollNumber: "20264003", name: "David Miller", email: "d.miller@cissikar.edu", branch: "Science", status: "Active", joinDate: "Feb 01, 2026" },
-  { id: "4", rollNumber: "20264004", name: "Emma Watson", email: "e.watson@cissikar.edu", branch: "Tech", status: "Inactive", joinDate: "Feb 10, 2026" },
-  { id: "5", rollNumber: "20264005", name: "Clara Oswald", email: "clara.o@cissikar.edu", branch: "Tech", status: "Active", joinDate: "Mar 02, 2026" },
-  { id: "6", rollNumber: "20264006", name: "Bob Martin", email: "bob.m@cissikar.edu", branch: "Math", status: "Active", joinDate: "Mar 11, 2026" },
-  { id: "7", rollNumber: "20264007", name: "Alice Cooper", email: "alice.c@cissikar.edu", branch: "Business", status: "Inactive", joinDate: "Apr 05, 2026" },
-  { id: "8", rollNumber: "20264008", name: "John Doe", email: "john.d@cissikar.edu", branch: "Science", status: "Active", joinDate: "May 20, 2026" },
-]
+import { getStudents, createStudent, updateStudent, deleteStudent } from "@/app/actions/students"
+
+interface Student {
+  id: string
+  name: string
+  rollNumber: string
+  email: string
+  branch: string
+  status: string
+  joinDate: string
+}
 
 export default function StudentsManagementPage() {
-  const [students, setStudents] = React.useState(INITIAL_STUDENTS)
+  const [students, setStudents] = React.useState<Student[]>([])
+  const [isLoading, setIsLoading] = React.useState(true)
   const [search, setSearch] = React.useState("")
   const [branchFilter, setBranchFilter] = React.useState("All")
   const [statusFilter, setStatusFilter] = React.useState("All")
@@ -64,16 +65,33 @@ export default function StudentsManagementPage() {
   const [isAddOpen, setIsAddOpen] = React.useState(false)
   const [isEditOpen, setIsEditOpen] = React.useState(false)
   const [isDeleteOpen, setIsDeleteOpen] = React.useState(false)
-  const [targetStudent, setTargetStudent] = React.useState<typeof INITIAL_STUDENTS[0] | null>(null)
+  const [targetStudent, setTargetStudent] = React.useState<Student | null>(null)
 
   // Form states
   const [formData, setFormData] = React.useState({
     name: "",
     rollNumber: "",
     email: "",
-    branch: "Tech",
+    branch: "10-A",
     status: "Active"
   })
+
+  const loadStudents = async () => {
+    setIsLoading(true)
+    try {
+      const data = await getStudents()
+      setStudents(data)
+    } catch (err: any) {
+      console.error(err)
+      alert(err.message || "Failed to load students.")
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  React.useEffect(() => {
+    loadStudents()
+  }, [])
 
   // Filter & Search Logic
   const filteredStudents = React.useMemo(() => {
@@ -118,11 +136,11 @@ export default function StudentsManagementPage() {
   }
 
   // Add Student Submission
-  const handleAddSubmit = (e: React.FormEvent) => {
+  const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
     // Quick validation
-    if (!formData.name || !formData.rollNumber || !formData.email) {
+    if (!formData.name || !formData.rollNumber) {
       alert("Please fill all the required fields.")
       return
     }
@@ -133,23 +151,26 @@ export default function StudentsManagementPage() {
       return
     }
 
-    const newStudent = {
-      id: String(students.length + 1),
-      name: formData.name,
-      rollNumber: formData.rollNumber,
-      email: formData.email,
-      branch: formData.branch,
-      status: formData.status,
-      joinDate: new Date().toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" })
+    setIsLoading(true)
+    try {
+      await createStudent({
+        name: formData.name,
+        rollNumber: formData.rollNumber,
+        email: formData.email,
+        branch: formData.branch,
+      })
+      setIsAddOpen(false)
+      resetForm()
+      await loadStudents()
+    } catch (err: any) {
+      console.error(err)
+      alert(err.message || "Failed to create student.")
+      setIsLoading(false)
     }
-
-    setStudents([newStudent, ...students])
-    setIsAddOpen(false)
-    resetForm()
   }
 
   // Edit Button Action
-  const handleOpenEdit = (student: typeof INITIAL_STUDENTS[0]) => {
+  const handleOpenEdit = (student: Student) => {
     setTargetStudent(student)
     setFormData({
       name: student.name,
@@ -162,46 +183,53 @@ export default function StudentsManagementPage() {
   }
 
   // Edit Student Submission
-  const handleEditSubmit = (e: React.FormEvent) => {
+  const handleEditSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!targetStudent) return
 
-    if (!formData.name || !formData.rollNumber || !formData.email) {
+    if (!formData.name || !formData.rollNumber) {
       alert("Please fill all required fields.")
       return
     }
 
-    const updated = students.map((s) => {
-      if (s.id === targetStudent.id) {
-        return {
-          ...s,
-          name: formData.name,
-          rollNumber: formData.rollNumber,
-          email: formData.email,
-          branch: formData.branch,
-          status: formData.status
-        }
-      }
-      return s
-    })
-
-    setStudents(updated)
-    setIsEditOpen(false)
-    resetForm()
+    setIsLoading(true)
+    try {
+      await updateStudent(targetStudent.id, {
+        name: formData.name,
+        rollNumber: formData.rollNumber,
+        email: formData.email,
+        branch: formData.branch,
+      })
+      setIsEditOpen(false)
+      resetForm()
+      await loadStudents()
+    } catch (err: any) {
+      console.error(err)
+      alert(err.message || "Failed to update student.")
+      setIsLoading(false)
+    }
   }
 
   // Delete Action Click
-  const handleOpenDelete = (student: typeof INITIAL_STUDENTS[0]) => {
+  const handleOpenDelete = (student: Student) => {
     setTargetStudent(student)
     setIsDeleteOpen(true)
   }
 
   // Confirm Delete
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = async () => {
     if (!targetStudent) return
-    setStudents(students.filter((s) => s.id !== targetStudent.id))
-    setIsDeleteOpen(false)
-    setTargetStudent(null)
+    setIsLoading(true)
+    try {
+      await deleteStudent(targetStudent.id)
+      setIsDeleteOpen(false)
+      setTargetStudent(null)
+      await loadStudents()
+    } catch (err: any) {
+      console.error(err)
+      alert(err.message || "Failed to delete student.")
+      setIsLoading(false)
+    }
   }
 
   const resetForm = () => {
@@ -209,7 +237,7 @@ export default function StudentsManagementPage() {
       name: "",
       rollNumber: "",
       email: "",
-      branch: "Tech",
+      branch: "10-A",
       status: "Active"
     })
     setTargetStudent(null)
@@ -299,7 +327,12 @@ export default function StudentsManagementPage() {
       {/* Student List Table */}
       <Card className="border shadow-xs overflow-hidden">
         <CardContent className="p-0">
-          {filteredStudents.length === 0 ? (
+          {isLoading ? (
+            <div className="h-64 flex flex-col items-center justify-center gap-3">
+              <Loader size="lg" />
+              <span className="text-xs text-muted-foreground animate-pulse">Loading student records...</span>
+            </div>
+          ) : filteredStudents.length === 0 ? (
             <div className="h-64 flex flex-col items-center justify-center gap-2 text-muted-foreground">
               <Users className="size-8 stroke-1" />
               <span className="font-semibold text-sm">No student records found matching your filters.</span>

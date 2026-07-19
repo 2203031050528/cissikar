@@ -22,59 +22,71 @@ import {
 } from "@/components/ui/pagination"
 import { GraduationCap, BookOpen, Clock, Award, CheckCircle2, User, AlertCircle } from "lucide-react"
 
-// Mock exam data
-const INITIAL_EXAMS = [
-  { id: "1", title: "Introduction to Computer Science", code: "CS101", duration: "90 mins", questions: 50, category: "Tech", status: "Active" },
-  { id: "2", title: "Advanced Calculus & Linear Algebra", code: "MATH301", duration: "120 mins", questions: 30, category: "Math", status: "Active" },
-  { id: "3", title: "General Biochemistry & Genetics", code: "BIO202", duration: "75 mins", questions: 45, category: "Science", status: "Upcoming" },
-  { id: "4", title: "Macroeconomic Principles & Policies", code: "ECON110", duration: "90 mins", questions: 40, category: "Business", status: "Active" },
-  { id: "5", title: "Introduction to Psychology & Behavior", code: "PSY101", duration: "60 mins", questions: 50, category: "Social Sciences", status: "Completed" },
-  { id: "6", title: "Web Development Essentials", code: "CS210", duration: "90 mins", questions: 35, category: "Tech", status: "Active" },
-  { id: "7", title: "Organic Chemistry Foundations", code: "CHEM220", duration: "120 mins", questions: 40, category: "Science", status: "Active" },
-]
+import { getExamsPublic } from "@/app/actions/exams"
+
+interface Exam {
+  id: string
+  title: string
+  code: string
+  duration: string
+  questions: number
+  category: string
+  status: string
+}
 
 export default function ExamPlatformHome() {
   const router = useRouter()
+  const [exams, setExams] = React.useState<Exam[]>([])
   const [search, setSearch] = React.useState("")
   const [isSearching, setIsSearching] = React.useState(false)
-  const [filteredExams, setFilteredExams] = React.useState(INITIAL_EXAMS)
-  const [selectedExam, setSelectedExam] = React.useState<typeof INITIAL_EXAMS[0] | null>(null)
+  const [filteredExams, setFilteredExams] = React.useState<Exam[]>([])
+  const [selectedExam, setSelectedExam] = React.useState<Exam | null>(null)
   const [isModalOpen, setIsModalOpen] = React.useState(false)
-  const [isStartingExam, setIsStartingExam] = React.useState(false)
 
-  // Handle mock search logic with loading spinner
+  const loadExams = async () => {
+    setIsSearching(true)
+    try {
+      const data = await getExamsPublic()
+      setExams(data)
+      setFilteredExams(data)
+    } catch (err) {
+      console.error("Failed to load public exams:", err)
+    } finally {
+      setIsSearching(false)
+    }
+  }
+
+  React.useEffect(() => {
+    loadExams()
+  }, [])
+
+  // Handle search logic
   React.useEffect(() => {
     if (search === "") {
-      setFilteredExams(INITIAL_EXAMS)
+      setFilteredExams(exams)
       return
     }
 
-    setIsSearching(true)
     const delayDebounceFn = setTimeout(() => {
-      const results = INITIAL_EXAMS.filter((exam) =>
+      const results = exams.filter((exam) =>
         exam.title.toLowerCase().includes(search.toLowerCase()) ||
         exam.code.toLowerCase().includes(search.toLowerCase()) ||
         exam.category.toLowerCase().includes(search.toLowerCase())
       )
       setFilteredExams(results)
-      setIsSearching(false)
-    }, 400) // Mock api query latency
+    }, 200)
 
     return () => clearTimeout(delayDebounceFn)
-  }, [search])
+  }, [search, exams])
 
-  const handleOpenExamModal = (exam: typeof INITIAL_EXAMS[0]) => {
+  const handleOpenExamModal = (exam: Exam) => {
     setSelectedExam(exam)
     setIsModalOpen(true)
   }
 
   const handleStartExam = () => {
-    setIsStartingExam(true)
-    setTimeout(() => {
-      setIsStartingExam(false)
-      setIsModalOpen(false)
-      alert(`Exam "${selectedExam?.title}" started successfully! Redirecting to student interface...`)
-    }, 1500)
+    setIsModalOpen(false)
+    router.push("/login")
   }
 
   return (
@@ -233,7 +245,7 @@ export default function ExamPlatformHome() {
             {/* Custom Pagination Integration Demo */}
             <CardFooter className="flex items-center justify-between border-t p-4 bg-muted/20">
               <span className="text-xs text-muted-foreground">
-                Showing <strong className="text-foreground">{filteredExams.length}</strong> of <strong className="text-foreground">{INITIAL_EXAMS.length}</strong> entries
+                Showing <strong className="text-foreground">{filteredExams.length}</strong> of <strong className="text-foreground">{exams.length}</strong> entries
               </span>
               <Pagination className="mx-0 w-auto">
                 <PaginationContent>
@@ -291,7 +303,6 @@ export default function ExamPlatformHome() {
               <Button 
                 variant="outline" 
                 onClick={() => setIsModalOpen(false)}
-                disabled={isStartingExam}
                 className="cursor-pointer"
               >
                 Cancel
@@ -299,10 +310,9 @@ export default function ExamPlatformHome() {
               <Button 
                 variant="default" 
                 onClick={handleStartExam}
-                disabled={isStartingExam}
                 className="min-w-28 cursor-pointer"
               >
-                {isStartingExam ? <Loader size="sm" variant="default" className="text-current" /> : "Start Exam"}
+                Sign In to Start
               </Button>
             </div>
           }

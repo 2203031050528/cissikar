@@ -21,180 +21,44 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
-// Mock results overview
-const RESULTS_LIST = [
-  { id: "R1", name: "CS101 Midterm Assessment", score: "24 / 30", percentage: "80%", correct: 8, wrong: 2, timeTaken: "34m 12s", date: "July 16, 2026" },
-  { id: "R2", name: "Web Development Essentials", score: "23 / 25", percentage: "92%", correct: 23, wrong: 2, timeTaken: "52m 04s", date: "July 12, 2026" },
-  { id: "R3", name: "Macroeconomic Principles", score: "31 / 40", percentage: "78%", correct: 31, wrong: 9, timeTaken: "74m 15s", date: "July 08, 2026" }
-]
-
-// Detailed Question Review data for R1 (CS101)
-const QUESTION_REVIEW_DATA = [
-  {
-    id: "Q1",
-    num: 1,
-    text: "What is the primary function of the CSS flexbox layout model?",
-    options: {
-      A: "To build 3D transformations and shadow elevations",
-      B: "To lay out items in one dimension (as a row or a column)",
-      C: "To style structural backend database tables",
-      D: "To facilitate real-time WebSocket communication sessions"
-    },
-    userAnswer: "B",
-    correctAnswer: "B",
-    isCorrect: true,
-    marks: 2,
-    explanation: "Flexbox is designed for laying out items in a single dimension (either rows or columns). 2D grid layouts are best handled by CSS Grid."
-  },
-  {
-    id: "Q2",
-    num: 2,
-    text: "Which of the following is true about a binary search tree?",
-    options: {
-      A: "Every node in the tree has exactly three children",
-      B: "The right child of a node is always smaller than its parent node",
-      C: "The left subtree of a node contains only nodes with keys less than the parent node's key",
-      D: "It operates in O(N^2) average search time complexity"
-    },
-    userAnswer: "C",
-    correctAnswer: "C",
-    isCorrect: true,
-    marks: 3,
-    explanation: "By definition, the left child node in a binary search tree contains a value smaller than the parent node, and the right child node contains a value greater than the parent node."
-  },
-  {
-    id: "Q3",
-    num: 3,
-    text: "Find the mathematical limit of (sin x) / x as x approaches 0.",
-    options: {
-      A: "0",
-      B: "Infinity",
-      C: "1",
-      D: "Undefined"
-    },
-    userAnswer: "A",
-    correctAnswer: "C",
-    isCorrect: false,
-    marks: 2,
-    explanation: "By L'Hopital's rule or basic trigonometric properties, the limit of (sin x) / x as x approaches 0 is equal to 1."
-  },
-  {
-    id: "Q4",
-    num: 4,
-    text: "Which chemical bond involves the sharing of electron pairs between atoms?",
-    options: {
-      A: "Ionic bond structure",
-      B: "Covalent bond structure",
-      C: "Hydrogen bond connection",
-      D: "Metallic lattice bond"
-    },
-    userAnswer: "B",
-    correctAnswer: "B",
-    isCorrect: true,
-    marks: 2,
-    explanation: "Covalent bonding involves the sharing of electron pairs between atoms to reach structural stability."
-  },
-  {
-    id: "Q5",
-    num: 5,
-    text: "What is the primary role of a central bank in monetary policy?",
-    options: {
-      A: "To finance start-up companies directly through seed investments",
-      B: "To regulate the money supply, print currency, and set target interest rates",
-      C: "To determine individual corporate stock market pricing values",
-      D: "To set global exchange currency conversion standards"
-    },
-    userAnswer: "B",
-    correctAnswer: "B",
-    isCorrect: true,
-    marks: 3,
-    explanation: "Central banks manage the money supply, print currency bills, and adjust short-term interest rates to maintain low inflation and promote employment."
-  },
-  {
-    id: "Q6",
-    num: 6,
-    text: "In React, what hook is used to perform side effects in functional components?",
-    options: {
-      A: "useState",
-      B: "useContext",
-      C: "useReducer",
-      D: "useEffect"
-    },
-    userAnswer: "D",
-    correctAnswer: "D",
-    isCorrect: true,
-    marks: 2,
-    explanation: "The useEffect Hook lets you perform side effects (such as fetching data, manipulating DOM elements directly) in functional components."
-  },
-  {
-    id: "Q7",
-    num: 7,
-    text: "Solve the derivative of f(x) = 3x^2 + 5x - 9 with respect to x.",
-    options: {
-      A: "6x",
-      B: "6x + 5",
-      C: "3x + 5",
-      D: "6x - 9"
-    },
-    userAnswer: "B",
-    correctAnswer: "B",
-    isCorrect: true,
-    marks: 4,
-    explanation: "Using the power rule, the derivative of 3x^2 is 6x, and the derivative of 5x is 5. The derivative of constant -9 is 0. So f'(x) = 6x + 5."
-  },
-  {
-    id: "Q8",
-    num: 8,
-    text: "Which of the following organelle structures acts as the powerhouse of eukaryotic cells?",
-    options: {
-      A: "Ribosome",
-      B: "Lysosome",
-      C: "Mitochondria",
-      D: "Nucleus"
-    },
-    userAnswer: "A",
-    correctAnswer: "C",
-    isCorrect: false,
-    marks: 2,
-    explanation: "Mitochondria are membrane-bound organelles that generate most of the chemical energy needed to power the cell's biochemical reactions."
-  },
-  {
-    id: "Q9",
-    num: 9,
-    text: "Which SQL clause is used to filter records in a group based on aggregate functions?",
-    options: {
-      A: "WHERE",
-      B: "HAVING",
-      C: "GROUP BY",
-      D: "ORDER BY"
-    },
-    userAnswer: "B",
-    correctAnswer: "B",
-    isCorrect: true,
-    marks: 3,
-    explanation: "The HAVING clause was added to SQL because the WHERE keyword could not be used with aggregate functions."
-  },
-  {
-    id: "Q10",
-    num: 10,
-    text: "What is the key objective of the HTTP POST request method?",
-    options: {
-      A: "To retrieve resource data from a server safely without changes",
-      B: "To submit data to be processed and create/update a resource on the server",
-      C: "To delete an existing file or resource from the server storage",
-      D: "To test the latency and reachability of the destination host"
-    },
-    userAnswer: "B",
-    correctAnswer: "B",
-    isCorrect: true,
-    marks: 2,
-    explanation: "HTTP POST is used to send data to a server to create or update resources on the target database."
-  }
-]
+import { getAttemptResults } from "@/app/actions/exams"
+import { useSearchParams, useRouter } from "next/navigation"
+import { Loader } from "@/components/ui/loader"
 
 export default function StudentResultsPage() {
-  const [selectedResult, setSelectedResult] = React.useState(RESULTS_LIST[0])
-  const [expandedQuestions, setExpandedQuestions] = React.useState<string[]>(["Q1"])
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const attemptId = searchParams.get("attemptId")
+
+  const [data, setData] = React.useState<any>(null)
+  const [isLoading, setIsLoading] = React.useState(true)
+  const [expandedQuestions, setExpandedQuestions] = React.useState<string[]>([])
+
+  React.useEffect(() => {
+    if (!attemptId) {
+      router.push("/student")
+      return
+    }
+
+    async function fetchResults() {
+      setIsLoading(true)
+      try {
+        const res = await getAttemptResults(attemptId!)
+        setData(res)
+        if (res.reviews.length > 0) {
+          setExpandedQuestions([res.reviews[0].id])
+        }
+      } catch (err: any) {
+        console.error(err)
+        alert(err.message || "Failed to load results. Direct access is restricted.")
+        router.push("/student")
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    fetchResults()
+  }, [attemptId, router])
 
   const toggleQuestionExpand = (qId: string) => {
     setExpandedQuestions(prev =>
@@ -202,12 +66,29 @@ export default function StudentResultsPage() {
     )
   }
 
-  const handleSelectResult = (id: string) => {
-    const res = RESULTS_LIST.find(r => r.id === id)
-    if (res) {
-      setSelectedResult(res)
-    }
+  if (isLoading || !data) {
+    return (
+      <div className="h-96 flex flex-col items-center justify-center gap-3">
+        <Loader size="lg" />
+        <span className="text-sm font-medium text-muted-foreground animate-pulse">
+          Evaluating scorecard breakdown...
+        </span>
+      </div>
+    )
   }
+
+  const selectedResult = {
+    name: data.examName,
+    score: data.score,
+    percentage: data.percentage,
+    correct: data.correct,
+    wrong: data.wrong,
+    timeTaken: data.timeTaken,
+    date: data.date
+  }
+  const questions = data.reviews
+  const exam = { title: data.examName }
+
 
   return (
     <div className="space-y-8 animate-fade-in">
@@ -215,22 +96,10 @@ export default function StudentResultsPage() {
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="font-heading text-2xl font-bold tracking-tight text-foreground font-bold">Exam Results Summary</h1>
+          <h1 className="font-heading text-2xl font-bold tracking-tight text-foreground font-bold">
+            Results: {exam.title}
+          </h1>
           <p className="text-sm text-muted-foreground">View detailed marksheets, scorecards, and questions answers review sheets.</p>
-        </div>
-        
-        {/* Exam Select Filter */}
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold text-muted-foreground whitespace-nowrap">Choose Assessment:</span>
-          <select 
-            value={selectedResult.id} 
-            onChange={(e) => handleSelectResult(e.target.value)}
-            className="h-8 rounded-lg border border-input px-2 text-xs outline-none bg-background focus:ring-1 focus:ring-ring font-semibold text-muted-foreground cursor-pointer"
-          >
-            {RESULTS_LIST.map((res) => (
-              <option key={res.id} value={res.id}>{res.name}</option>
-            ))}
-          </select>
         </div>
       </div>
 
@@ -320,7 +189,7 @@ export default function StudentResultsPage() {
         </CardHeader>
 
         <CardContent className="p-0 divide-y">
-          {QUESTION_REVIEW_DATA.map((q) => {
+          {questions.map((q: any) => {
             const isExpanded = expandedQuestions.includes(q.id)
             return (
               <div key={q.id} className="p-4 sm:p-6 space-y-4">
@@ -385,7 +254,7 @@ export default function StudentResultsPage() {
                               )}>
                                 {key}
                               </span>
-                              <span>{value}</span>
+                              <span>{value as string}</span>
                             </div>
                             
                             {/* Badges for answer tags */}

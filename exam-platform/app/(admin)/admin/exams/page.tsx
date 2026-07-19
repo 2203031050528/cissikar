@@ -28,30 +28,36 @@ import {
   AlertCircle 
 } from "lucide-react"
 
-// Initial Questions Pool for picking
-const QUESTIONS_POOL = [
-  { id: "Q1", questionText: "What is the primary function of the CSS flexbox layout model?", subject: "Tech", difficulty: "Easy", marks: 2 },
-  { id: "Q2", questionText: "Which of the following is true about a binary search tree?", subject: "Tech", difficulty: "Medium", marks: 4 },
-  { id: "Q3", questionText: "Find the limit of (sin x) / x as x approaches 0.", subject: "Math", difficulty: "Easy", marks: 3 },
-  { id: "Q4", questionText: "Which chemical bond involves the sharing of electron pairs between atoms?", subject: "Science", difficulty: "Easy", marks: 2 },
-  { id: "Q5", questionText: "What is the primary role of a central bank in monetary policy?", subject: "Business", difficulty: "Medium", marks: 3 },
-  { id: "Q6", questionText: "In React, what hook is used to perform side effects in functional components?", subject: "Tech", difficulty: "Easy", marks: 2 },
-  { id: "Q7", questionText: "Solve the derivative of f(x) = 3x^2 + 5x - 9 with respect to x.", subject: "Math", difficulty: "Medium", marks: 4 },
-  { id: "Q8", questionText: "Which of the following acts as the powerhouse of eukaryotic cells?", subject: "Science", difficulty: "Hard", marks: 3 }
-]
+import { getQuestions } from "@/app/actions/questions"
+import { getExamsAdmin, createExam, deleteExam } from "@/app/actions/exams"
 
-// Existing Exams list
-const INITIAL_EXAMS = [
-  { id: "E1", name: "CS101 Midterm Assessment", classTarget: "CS-A", duration: "90", startTime: "2026-07-20T09:00", endTime: "2026-07-20T10:30", questionsCount: 5, totalMarks: 13, status: "Scheduled" },
-  { id: "E2", name: "MATH301 Final Exam", classTarget: "MATH-3", duration: "120", startTime: "2026-07-22T14:00", endTime: "2026-07-22T16:00", questionsCount: 4, totalMarks: 14, status: "Draft" },
-  { id: "E3", name: "BIO202 Genetics Quiz", classTarget: "BIO-2", duration: "45", startTime: "2026-07-16T10:00", endTime: "2026-07-16T10:45", questionsCount: 3, totalMarks: 7, status: "Active" }
-]
+interface Question {
+  id: string
+  questionText: string
+  subject: string
+  difficulty: string
+  marks: number
+}
+
+interface Exam {
+  id: string
+  name: string
+  classTarget: string
+  duration: string
+  startTime: string
+  endTime: string
+  questionsCount: number
+  totalMarks: number
+  status: string
+}
 
 export default function ExamBuilderPage() {
-  const [exams, setExams] = React.useState(INITIAL_EXAMS)
+  const [exams, setExams] = React.useState<Exam[]>([])
+  const [questions, setQuestions] = React.useState<Question[]>([])
   const [selectedQuestions, setSelectedQuestions] = React.useState<string[]>([])
   const [searchQuestion, setSearchQuestion] = React.useState("")
   const [isSaving, setIsSaving] = React.useState(false)
+  const [isLoading, setIsLoading] = React.useState(true)
 
   // Exam Form Fields
   const [formFields, setFormFields] = React.useState({
@@ -59,16 +65,37 @@ export default function ExamBuilderPage() {
     duration: "",
     startTime: "",
     endTime: "",
-    classTarget: "CS-A"
+    classTarget: "10-A",
+    numQuestionsToServe: "",
+    randomizeQuestions: true
   })
+
+  const loadData = async () => {
+    setIsLoading(true)
+    try {
+      const qData = await getQuestions()
+      setQuestions(qData)
+      const eData = await getExamsAdmin()
+      setExams(eData)
+    } catch (err: any) {
+      console.error(err)
+      alert(err.message || "Failed to load database items.")
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  React.useEffect(() => {
+    loadData()
+  }, [])
 
   // Filtered Questions in Picker
   const filteredQuestions = React.useMemo(() => {
-    return QUESTIONS_POOL.filter(q => 
+    return questions.filter(q => 
       q.questionText.toLowerCase().includes(searchQuestion.toLowerCase()) ||
       q.id.toLowerCase().includes(searchQuestion.toLowerCase())
     )
-  }, [searchQuestion])
+  }, [questions, searchQuestion])
 
   // Handle Input Changes
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -80,6 +107,10 @@ export default function ExamBuilderPage() {
     setFormFields(prev => ({ ...prev, classTarget: value }))
   }
 
+  const handleCheckboxChange = (name: string, checked: boolean) => {
+    setFormFields(prev => ({ ...prev, [name]: checked }))
+  }
+
   // Toggle Question checkbox selection
   const handleToggleQuestion = (id: string) => {
     setSelectedQuestions(prev => 
@@ -89,16 +120,16 @@ export default function ExamBuilderPage() {
 
   // Calculate stats of selected questions
   const selectedStats = React.useMemo(() => {
-    const questions = QUESTIONS_POOL.filter(q => selectedQuestions.includes(q.id))
-    const totalMarks = questions.reduce((sum, q) => sum + q.marks, 0)
+    const selected = questions.filter(q => selectedQuestions.includes(q.id))
+    const totalMarks = selected.reduce((sum, q) => sum + q.marks, 0)
     return {
-      count: questions.length,
+      count: selected.length,
       marks: totalMarks
     }
-  }, [selectedQuestions])
+  }, [questions, selectedQuestions])
 
   // Save Exam Builder Form
-  const handleSaveExam = (e: React.FormEvent) => {
+  const handleSaveExam = async (e: React.FormEvent) => {
     e.preventDefault()
 
     if (!formFields.name || !formFields.duration || !formFields.startTime || !formFields.endTime) {
@@ -113,21 +144,16 @@ export default function ExamBuilderPage() {
 
     setIsSaving(true)
 
-    setTimeout(() => {
-      const newExam = {
-        id: `E${exams.length + 1}`,
-        name: formFields.name,
-        classTarget: formFields.classTarget,
-        duration: formFields.duration,
-        startTime: formFields.startTime,
-        endTime: formFields.endTime,
-        questionsCount: selectedQuestions.length,
-        totalMarks: selectedStats.marks,
-        status: "Scheduled"
-      }
-
-      setExams([newExam, ...exams])
-      setIsSaving(false)
+    try {
+      await createExam({
+        title: formFields.name,
+        durationMinutes: Number(formFields.duration),
+        startTime: new Date(formFields.startTime).toISOString(),
+        endTime: new Date(formFields.endTime).toISOString(),
+        classSection: formFields.classTarget,
+        numQuestionsToServe: Number(formFields.numQuestionsToServe) || selectedQuestions.length,
+        randomizeQuestions: formFields.randomizeQuestions,
+      }, selectedQuestions)
       
       // Reset Form & Selection
       setFormFields({
@@ -135,15 +161,32 @@ export default function ExamBuilderPage() {
         duration: "",
         startTime: "",
         endTime: "",
-        classTarget: "CS-A"
+        classTarget: "10-A",
+        numQuestionsToServe: "",
+        randomizeQuestions: true
       })
       setSelectedQuestions([])
-      alert(`Exam "${newExam.name}" built and saved successfully!`)
-    }, 1200)
+      alert(`Exam built and saved successfully!`)
+      await loadData()
+    } catch (err: any) {
+      console.error(err)
+      alert(err.message || "Failed to save exam layouts.")
+    } finally {
+      setIsSaving(false)
+    }
   }
 
-  const handleDeleteExam = (id: string) => {
-    setExams(exams.filter(e => e.id !== id))
+  const handleDeleteExam = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this exam?")) return
+    setIsLoading(true)
+    try {
+      await deleteExam(id)
+      await loadData()
+    } catch (err: any) {
+      console.error(err)
+      alert(err.message || "Failed to delete exam.")
+      setIsLoading(false)
+    }
   }
 
   return (
@@ -212,18 +255,48 @@ export default function ExamBuilderPage() {
                   <label className="text-xs font-bold text-muted-foreground">
                     Target Class *
                   </label>
-                  <Select value={formFields.classTarget} onValueChange={(val) => handleClassChange(val || "CS-A")}>
+                  <Select value={formFields.classTarget} onValueChange={(val) => handleClassChange(val || "10-A")}>
                     <SelectTrigger className="w-full h-9 text-xs cursor-pointer">
                       <SelectValue placeholder="Select Class" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="CS-A">CS-A (Tech)</SelectItem>
-                      <SelectItem value="CS-B">CS-B (Tech)</SelectItem>
-                      <SelectItem value="MATH-3">MATH-3 (Math)</SelectItem>
-                      <SelectItem value="BIO-2">BIO-2 (Science)</SelectItem>
-                      <SelectItem value="ECON-1">ECON-1 (Business)</SelectItem>
+                      <SelectItem value="10-A">10-A</SelectItem>
+                      <SelectItem value="10-B">10-B</SelectItem>
+                      <SelectItem value="11-A">11-A</SelectItem>
+                      <SelectItem value="12-A">12-A</SelectItem>
                     </SelectContent>
                   </Select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-muted-foreground" htmlFor="numQuestionsToServe">
+                    Serve Size (Optional)
+                  </label>
+                  <Input
+                    id="numQuestionsToServe"
+                    name="numQuestionsToServe"
+                    type="number"
+                    placeholder="e.g. 5 (Default all)"
+                    className="h-9 text-xs"
+                    value={formFields.numQuestionsToServe}
+                    onChange={handleInputChange}
+                  />
+                </div>
+
+                <div className="flex items-center gap-2 pt-5">
+                  <input
+                    type="checkbox"
+                    id="randomizeQuestions"
+                    name="randomizeQuestions"
+                    checked={formFields.randomizeQuestions}
+                    onChange={(e) => handleCheckboxChange("randomizeQuestions", e.target.checked)}
+                    className="size-4.5 rounded border border-input text-primary focus:ring-primary"
+                  />
+                  <label className="text-xs font-bold text-muted-foreground cursor-pointer select-none" htmlFor="randomizeQuestions">
+                    Randomize Order
+                  </label>
                 </div>
               </div>
 
@@ -320,7 +393,12 @@ export default function ExamBuilderPage() {
 
           {/* List of Questions with checkbox */}
           <CardContent className="p-0 overflow-y-auto max-h-[350px] divide-y flex-1">
-            {filteredQuestions.length === 0 ? (
+            {isLoading ? (
+              <div className="p-12 text-center text-xs text-muted-foreground flex flex-col items-center justify-center gap-2">
+                <Loader size="sm" />
+                <span className="animate-pulse">Loading question pool...</span>
+              </div>
+            ) : filteredQuestions.length === 0 ? (
               <div className="p-12 text-center text-xs text-muted-foreground flex flex-col items-center justify-center gap-2">
                 <AlertCircle className="size-6 stroke-1 text-muted-foreground" />
                 <span>No matching questions pool found.</span>
@@ -370,7 +448,7 @@ export default function ExamBuilderPage() {
           
           <div className="p-3 border-t bg-muted/20 text-center text-[10px] text-muted-foreground rounded-b-xl flex items-center justify-between px-6">
             <span>Check the box to add a question.</span>
-            <span>Total pool size: {QUESTIONS_POOL.length} items</span>
+            <span>Total pool size: {questions.length} items</span>
           </div>
         </Card>
 
@@ -383,7 +461,12 @@ export default function ExamBuilderPage() {
           <CardDescription className="text-xs">View or delete exams registered on the system.</CardDescription>
         </CardHeader>
         <CardContent className="p-0 border-t">
-          {exams.length === 0 ? (
+          {isLoading ? (
+            <div className="p-12 text-center text-xs text-muted-foreground flex flex-col items-center justify-center gap-2">
+              <Loader size="lg" />
+              <span className="animate-pulse">Loading assessments...</span>
+            </div>
+          ) : exams.length === 0 ? (
             <div className="p-12 text-center text-xs text-muted-foreground flex flex-col items-center justify-center gap-2">
               <Calendar className="size-6 stroke-1 text-muted-foreground" />
               <span>No exams registered. Use the builder specifications form to add one.</span>
