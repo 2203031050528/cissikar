@@ -63,7 +63,7 @@ export default function QuestionBankPage() {
   
   // Pagination State
   const [currentPage, setCurrentPage] = React.useState(1)
-  const pageSize = 5
+  const pageSize = 10
 
   // Modals state
   const [isAddOpen, setIsAddOpen] = React.useState(false)

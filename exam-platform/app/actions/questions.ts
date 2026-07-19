@@ -134,6 +134,28 @@ export async function deleteQuestion(id: string) {
   return { success: true }
 }
 
+function parseCSVLine(line: string): string[] {
+  const result: string[] = []
+  let current = ""
+  let inQuotes = false
+  
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i]
+    
+    if (char === '"') {
+      inQuotes = !inQuotes
+    } else if (char === ',' && !inQuotes) {
+      result.push(current.trim())
+      current = ""
+    } else {
+      current += char
+    }
+  }
+  result.push(current.trim())
+  
+  return result.map(val => val.replace(/^"|"$/g, "").trim())
+}
+
 export async function uploadQuestionsCSV(csvText: string) {
   await verifyAdmin()
 
@@ -148,10 +170,7 @@ export async function uploadQuestionsCSV(csvText: string) {
     const line = lines[i].trim()
     if (!line) continue
 
-    // Handle quote-escaped commas if simple split doesn't work, but for now a basic parsing is fine
-    // Or a regex split to support quotes:
-    const matches = line.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || line.split(",")
-    const row = matches.map(val => val.trim().replace(/^"|"$/g, ""))
+    const row = parseCSVLine(line)
 
     if (row.length < 6) continue // Must have question text + 4 options + correct option
 

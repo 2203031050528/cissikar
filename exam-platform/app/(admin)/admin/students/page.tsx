@@ -35,10 +35,11 @@ import {
   BookOpen, 
   Filter, 
   ChevronRight,
-  AlertTriangle 
+  AlertTriangle,
+  Upload
 } from "lucide-react"
 
-import { getStudents, createStudent, updateStudent, deleteStudent } from "@/app/actions/students"
+import { getStudents, createStudent, updateStudent, deleteStudent, uploadStudentsCSV } from "@/app/actions/students"
 
 interface Student {
   id: string
@@ -50,30 +51,59 @@ interface Student {
   joinDate: string
 }
 
+const parseClassSection = (str: string) => {
+  if (!str) return { classVal: "1", sectionVal: "Pearl" }
+  const parts = str.split("-")
+  if (parts.length === 2) {
+    return { classVal: parts[0], sectionVal: parts[1] }
+  }
+  const match = str.match(/^(\d+)(.*)$/)
+  if (match) {
+    const num = match[1]
+    let sec = match[2].replace(/^-/, "") || "Pearl"
+    if (sec === "A") sec = "Pearl"
+    if (sec === "B") sec = "Ruby"
+    return { classVal: num, sectionVal: sec }
+  }
+  return { classVal: "1", sectionVal: "Pearl" }
+}
+
+const formatBranch = (branch: string) => {
+  if (!branch) return "--"
+  const parts = branch.split("-")
+  if (parts.length === 2) {
+    return `Class ${parts[0]} - ${parts[1]}`
+  }
+  return branch
+}
+
 export default function StudentsManagementPage() {
   const [students, setStudents] = React.useState<Student[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
   const [search, setSearch] = React.useState("")
-  const [branchFilter, setBranchFilter] = React.useState("All")
+  const [classFilter, setClassFilter] = React.useState("All")
+  const [sectionFilter, setSectionFilter] = React.useState("All")
   const [statusFilter, setStatusFilter] = React.useState("All")
   
   // Pagination State
   const [currentPage, setCurrentPage] = React.useState(1)
-  const pageSize = 5
+  const pageSize = 10
 
   // Modals state
   const [isAddOpen, setIsAddOpen] = React.useState(false)
   const [isEditOpen, setIsEditOpen] = React.useState(false)
   const [isDeleteOpen, setIsDeleteOpen] = React.useState(false)
+  const [isUploadOpen, setIsUploadOpen] = React.useState(false)
   const [targetStudent, setTargetStudent] = React.useState<Student | null>(null)
 
   // Form states
   const [formData, setFormData] = React.useState({
     name: "",
     rollNumber: "",
-    email: "",
-    branch: "10-A",
-    status: "Active"
+    classVal: "1",
+    sectionVal: "Pearl",
+    status: "Active",
+    password: ""
   })
 
   const loadStudents = async () => {
@@ -98,20 +128,21 @@ export default function StudentsManagementPage() {
     return students.filter((s) => {
       const matchesSearch = 
         s.name.toLowerCase().includes(search.toLowerCase()) ||
-        s.rollNumber.includes(search) ||
-        s.email.toLowerCase().includes(search.toLowerCase())
+        s.rollNumber.includes(search)
       
-      const matchesBranch = branchFilter === "All" || s.branch === branchFilter
+      const { classVal, sectionVal } = parseClassSection(s.branch)
+      const matchesClass = classFilter === "All" || classVal === classFilter
+      const matchesSection = sectionFilter === "All" || sectionVal === sectionFilter
       const matchesStatus = statusFilter === "All" || s.status === statusFilter
 
-      return matchesSearch && matchesBranch && matchesStatus
+      return matchesSearch && matchesClass && matchesSection && matchesStatus
     })
-  }, [students, search, branchFilter, statusFilter])
+  }, [students, search, classFilter, sectionFilter, statusFilter])
 
   // Reset page when filters change
   React.useEffect(() => {
     setCurrentPage(1)
-  }, [search, branchFilter, statusFilter])
+  }, [search, classFilter, sectionFilter, statusFilter])
 
   // Paginated Students
   const paginatedStudents = React.useMemo(() => {
@@ -127,12 +158,16 @@ export default function StudentsManagementPage() {
     setFormData((prev) => ({ ...prev, [name]: value }))
   }
 
-  const handleBranchChange = (value: string) => {
-    setFormData((prev) => ({ ...prev, branch: value }))
+  const handleClassChange = (value: string | null) => {
+    setFormData((prev) => ({ ...prev, classVal: value || "1" }))
   }
 
-  const handleStatusChange = (value: string) => {
-    setFormData((prev) => ({ ...prev, status: value }))
+  const handleSectionChange = (value: string | null) => {
+    setFormData((prev) => ({ ...prev, sectionVal: value || "Pearl" }))
+  }
+
+  const handleStatusChange = (value: string | null) => {
+    setFormData((prev) => ({ ...prev, status: value || "Active" }))
   }
 
   // Add Student Submission
@@ -156,8 +191,9 @@ export default function StudentsManagementPage() {
       await createStudent({
         name: formData.name,
         rollNumber: formData.rollNumber,
-        email: formData.email,
-        branch: formData.branch,
+        email: "",
+        branch: `${formData.classVal}-${formData.sectionVal}`,
+        password: formData.password,
       })
       setIsAddOpen(false)
       resetForm()
@@ -172,12 +208,14 @@ export default function StudentsManagementPage() {
   // Edit Button Action
   const handleOpenEdit = (student: Student) => {
     setTargetStudent(student)
+    const { classVal, sectionVal } = parseClassSection(student.branch)
     setFormData({
       name: student.name,
       rollNumber: student.rollNumber,
-      email: student.email,
-      branch: student.branch,
-      status: student.status
+      classVal,
+      sectionVal,
+      status: student.status,
+      password: ""
     })
     setIsEditOpen(true)
   }
@@ -197,8 +235,8 @@ export default function StudentsManagementPage() {
       await updateStudent(targetStudent.id, {
         name: formData.name,
         rollNumber: formData.rollNumber,
-        email: formData.email,
-        branch: formData.branch,
+        email: "",
+        branch: `${formData.classVal}-${formData.sectionVal}`,
       })
       setIsEditOpen(false)
       resetForm()
@@ -236,11 +274,46 @@ export default function StudentsManagementPage() {
     setFormData({
       name: "",
       rollNumber: "",
-      email: "",
-      branch: "10-A",
-      status: "Active"
+      classVal: "1",
+      sectionVal: "Pearl",
+      status: "Active",
+      password: ""
     })
     setTargetStudent(null)
+  }
+
+  const handleCSVUpload = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const input = document.getElementById("student-csv-input") as HTMLInputElement
+    const file = input?.files?.[0]
+    if (!file) {
+      alert("Please select a CSV file first.")
+      return
+    }
+
+    const reader = new FileReader()
+    reader.onload = async (evt) => {
+      const text = evt.target?.result as string
+      if (!text) return
+
+      setIsLoading(true)
+      try {
+        const res = await uploadStudentsCSV(text)
+        if (res.success) {
+          alert(`Successfully uploaded ${res.count} students.`)
+          setIsUploadOpen(false)
+          await loadStudents()
+        } else {
+          alert("No valid students found in CSV.")
+        }
+      } catch (err: any) {
+        console.error(err)
+        alert(err.message || "Failed to upload CSV.")
+      } finally {
+        setIsLoading(false)
+      }
+    }
+    reader.readAsText(file)
   }
 
   return (
@@ -252,17 +325,28 @@ export default function StudentsManagementPage() {
           <h1 className="font-heading text-2xl font-bold tracking-tight text-foreground">Student Management</h1>
           <p className="text-sm text-muted-foreground">Manage student registrations, academic branches, and credentials.</p>
         </div>
-        <Button 
-          size="sm" 
-          className="cursor-pointer gap-2"
-          onClick={() => {
-            resetForm()
-            setIsAddOpen(true)
-          }}
-        >
-          <UserPlus className="size-4" />
-          <span>Add Student</span>
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button 
+            size="sm" 
+            variant="outline"
+            className="cursor-pointer gap-2"
+            onClick={() => setIsUploadOpen(true)}
+          >
+            <Upload className="size-4" />
+            <span>Upload CSV</span>
+          </Button>
+          <Button 
+            size="sm" 
+            className="cursor-pointer gap-2"
+            onClick={() => {
+              resetForm()
+              setIsAddOpen(true)
+            }}
+          >
+            <UserPlus className="size-4" />
+            <span>Add Student</span>
+          </Button>
+        </div>
       </div>
 
       {/* Search, Filter, Action Controls */}
@@ -274,29 +358,47 @@ export default function StudentsManagementPage() {
             <SearchBox 
               value={search} 
               onChange={setSearch} 
-              placeholder="Search by name, roll, email..." 
+              placeholder="Search by name or roll number..." 
             />
           </div>
 
           {/* Filters Select */}
           <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
             
-            {/* Filter by Branch */}
+            {/* Filter by Class (1 to 12) */}
             <div className="flex items-center gap-2">
               <span className="text-xs font-semibold text-muted-foreground flex items-center gap-1">
                 <Filter className="size-3" />
-                <span>Branch:</span>
+                <span>Class:</span>
               </span>
-              <Select value={branchFilter} onValueChange={(val) => setBranchFilter(val || "All")}>
-                <SelectTrigger className="w-[120px] h-8 text-xs cursor-pointer">
-                  <SelectValue placeholder="All Branches" />
+              <Select value={classFilter} onValueChange={(val) => setClassFilter(val || "All")}>
+                <SelectTrigger className="w-[110px] h-8 text-xs cursor-pointer">
+                  <SelectValue placeholder="All Classes" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="All">All Branches</SelectItem>
-                  <SelectItem value="Tech">Tech</SelectItem>
-                  <SelectItem value="Science">Science</SelectItem>
-                  <SelectItem value="Math">Math</SelectItem>
-                  <SelectItem value="Business">Business</SelectItem>
+                  <SelectItem value="All">All Classes</SelectItem>
+                  {Array.from({ length: 12 }, (_, i) => String(i + 1)).map((c) => (
+                    <SelectItem key={c} value={c}>Class {c}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Filter by Section (Pearl, Ruby, Diamond) */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-muted-foreground flex items-center gap-1">
+                <Filter className="size-3" />
+                <span>Section:</span>
+              </span>
+              <Select value={sectionFilter} onValueChange={(val) => setSectionFilter(val || "All")}>
+                <SelectTrigger className="w-[110px] h-8 text-xs cursor-pointer">
+                  <SelectValue placeholder="All Sections" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="All">All Sections</SelectItem>
+                  <SelectItem value="Pearl">Pearl</SelectItem>
+                  <SelectItem value="Ruby">Ruby</SelectItem>
+                  <SelectItem value="Diamond">Diamond</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -340,7 +442,8 @@ export default function StudentsManagementPage() {
                 variant="link" 
                 onClick={() => {
                   setSearch("")
-                  setBranchFilter("All")
+                  setClassFilter("All")
+                  setSectionFilter("All")
                   setStatusFilter("All")
                 }} 
                 className="text-primary text-xs font-semibold"
@@ -354,8 +457,7 @@ export default function StudentsManagementPage() {
                 <TableRow>
                   <TableHead className="w-[120px]">Roll Number</TableHead>
                   <TableHead>Student Name</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Branch</TableHead>
+                  <TableHead>Class Section</TableHead>
                   <TableHead>Date of Join</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
@@ -366,10 +468,9 @@ export default function StudentsManagementPage() {
                   <TableRow key={student.id} className="hover:bg-muted/30 transition-colors">
                     <TableCell className="font-mono font-bold text-xs text-muted-foreground">{student.rollNumber}</TableCell>
                     <TableCell className="font-semibold text-xs text-foreground">{student.name}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground">{student.email}</TableCell>
                     <TableCell>
                       <Badge variant="outline" className="rounded-md px-2 py-0.5 text-xs font-normal">
-                        {student.branch}
+                        {formatBranch(student.branch)}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">{student.joinDate}</TableCell>
@@ -497,60 +598,72 @@ export default function StudentsManagementPage() {
             />
           </div>
 
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-muted-foreground" htmlFor="rollNumber">
+              Roll Number *
+            </label>
+            <div className="relative">
+              <Hash className="absolute left-2.5 top-2 size-3.5 text-muted-foreground pointer-events-none" />
+              <Input 
+                id="rollNumber" 
+                name="rollNumber" 
+                placeholder="e.g. 20264009" 
+                className="pl-8 h-8 text-xs"
+                value={formData.rollNumber}
+                onChange={handleInputChange}
+                required
+              />
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1">
-              <label className="text-xs font-bold text-muted-foreground" htmlFor="rollNumber">
-                Roll Number *
+              <label className="text-xs font-bold text-muted-foreground">
+                Class *
               </label>
-              <div className="relative">
-                <Hash className="absolute left-2.5 top-2 size-3.5 text-muted-foreground pointer-events-none" />
-                <Input 
-                  id="rollNumber" 
-                  name="rollNumber" 
-                  placeholder="e.g. 20264009" 
-                  className="pl-8 h-8 text-xs"
-                  value={formData.rollNumber}
-                  onChange={handleInputChange}
-                  required
-                />
-              </div>
+              <Select value={formData.classVal} onValueChange={handleClassChange}>
+                <SelectTrigger className="w-full h-8 text-xs cursor-pointer">
+                  <SelectValue placeholder="Class" />
+                </SelectTrigger>
+                <SelectContent>
+                  {Array.from({ length: 12 }, (_, i) => String(i + 1)).map((c) => (
+                    <SelectItem key={c} value={c}>Class {c}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-bold text-muted-foreground" htmlFor="branch">
-                Academic Branch *
+              <label className="text-xs font-bold text-muted-foreground">
+                Section *
               </label>
-              <Select value={formData.branch} onValueChange={(val) => handleBranchChange(val || "Tech")}>
+              <Select value={formData.sectionVal} onValueChange={handleSectionChange}>
                 <SelectTrigger className="w-full h-8 text-xs cursor-pointer">
-                  <SelectValue placeholder="Branch" />
+                  <SelectValue placeholder="Section" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Tech">Tech</SelectItem>
-                  <SelectItem value="Science">Science</SelectItem>
-                  <SelectItem value="Math">Math</SelectItem>
-                  <SelectItem value="Business">Business</SelectItem>
+                  <SelectItem value="Pearl">Pearl</SelectItem>
+                  <SelectItem value="Ruby">Ruby</SelectItem>
+                  <SelectItem value="Diamond">Diamond</SelectItem>
                 </SelectContent>
               </Select>
             </div>
           </div>
 
           <div className="space-y-1">
-            <label className="text-xs font-bold text-muted-foreground" htmlFor="email">
-              Email Address *
+            <label className="text-xs font-bold text-muted-foreground" htmlFor="password">
+              Password *
             </label>
-            <div className="relative">
-              <Mail className="absolute left-2.5 top-2 size-3.5 text-muted-foreground pointer-events-none" />
-              <Input 
-                id="email" 
-                name="email" 
-                type="email"
-                placeholder="e.g. alice@cissikar.edu" 
-                className="pl-8 h-8 text-xs"
-                value={formData.email}
-                onChange={handleInputChange}
-                required
-              />
-            </div>
+            <Input 
+              id="password" 
+              name="password" 
+              type="password"
+              placeholder="Min 6 characters" 
+              className="h-8 text-xs"
+              value={formData.password}
+              onChange={handleInputChange}
+              required
+            />
           </div>
 
           <div className="space-y-1">
@@ -617,58 +730,55 @@ export default function StudentsManagementPage() {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1">
-              <label className="text-xs font-bold text-muted-foreground" htmlFor="edit-roll">
-                Roll Number *
-              </label>
-              <div className="relative">
-                <Hash className="absolute left-2.5 top-2 size-3.5 text-muted-foreground pointer-events-none" />
-                <Input 
-                  id="edit-roll" 
-                  name="rollNumber" 
-                  className="pl-8 h-8 text-xs bg-muted/20"
-                  value={formData.rollNumber}
-                  onChange={handleInputChange}
-                  disabled // Roll Number should not be editable as it is a unique key
-                  required
-                />
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-xs font-bold text-muted-foreground" htmlFor="edit-branch">
-                Academic Branch *
-              </label>
-              <Select value={formData.branch} onValueChange={(val) => handleBranchChange(val || "Tech")}>
-                <SelectTrigger className="w-full h-8 text-xs cursor-pointer">
-                  <SelectValue placeholder="Branch" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Tech">Tech</SelectItem>
-                  <SelectItem value="Science">Science</SelectItem>
-                  <SelectItem value="Math">Math</SelectItem>
-                  <SelectItem value="Business">Business</SelectItem>
-                </SelectContent>
-              </Select>
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-muted-foreground" htmlFor="edit-roll">
+              Roll Number *
+            </label>
+            <div className="relative">
+              <Hash className="absolute left-2.5 top-2 size-3.5 text-muted-foreground pointer-events-none" />
+              <Input 
+                id="edit-roll" 
+                name="rollNumber" 
+                className="pl-8 h-8 text-xs bg-muted/20"
+                value={formData.rollNumber}
+                onChange={handleInputChange}
+                disabled // Roll Number should not be editable as it is a unique key
+                required
+              />
             </div>
           </div>
 
-          <div className="space-y-1">
-            <label className="text-xs font-bold text-muted-foreground" htmlFor="edit-email">
-              Email Address *
-            </label>
-            <div className="relative">
-              <Mail className="absolute left-2.5 top-2 size-3.5 text-muted-foreground pointer-events-none" />
-              <Input 
-                id="edit-email" 
-                name="email" 
-                type="email"
-                className="pl-8 h-8 text-xs"
-                value={formData.email}
-                onChange={handleInputChange}
-                required
-              />
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-muted-foreground">
+                Class *
+              </label>
+              <Select value={formData.classVal} onValueChange={handleClassChange}>
+                <SelectTrigger className="w-full h-8 text-xs cursor-pointer">
+                  <SelectValue placeholder="Class" />
+                </SelectTrigger>
+                <SelectContent>
+                  {Array.from({ length: 12 }, (_, i) => String(i + 1)).map((c) => (
+                    <SelectItem key={c} value={c}>Class {c}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-muted-foreground">
+                Section *
+              </label>
+              <Select value={formData.sectionVal} onValueChange={handleSectionChange}>
+                <SelectTrigger className="w-full h-8 text-xs cursor-pointer">
+                  <SelectValue placeholder="Section" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Pearl">Pearl</SelectItem>
+                  <SelectItem value="Ruby">Ruby</SelectItem>
+                  <SelectItem value="Diamond">Diamond</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
@@ -746,6 +856,63 @@ export default function StudentsManagementPage() {
             </Button>
           </div>
         </div>
+      </Modal>
+
+      {/* Upload CSV Modal */}
+      <Modal
+        isOpen={isUploadOpen}
+        onClose={setIsUploadOpen}
+        title={
+          <div className="flex items-center gap-2">
+            <Upload className="size-5 text-primary" />
+            <span>Upload Students via CSV</span>
+          </div>
+        }
+        description="Select a comma-separated values (CSV) file matching our student directory layout template."
+      >
+        <form onSubmit={handleCSVUpload} className="space-y-4 pt-2">
+          
+          <div className="border border-dashed rounded-lg p-6 flex flex-col items-center justify-center gap-2 bg-muted/10">
+            <Upload className="size-8 text-muted-foreground stroke-1 mb-1" />
+            <input 
+              id="student-csv-input" 
+              type="file" 
+              accept=".csv" 
+              className="text-xs text-muted-foreground file:mr-4 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-primary file:text-primary-foreground hover:file:opacity-90 cursor-pointer"
+              required 
+            />
+          </div>
+
+          <div className="text-[11px] text-muted-foreground leading-normal space-y-1.5 bg-muted/20 p-3 rounded-lg border">
+            <p className="font-bold text-foreground">Expected CSV Column Structure:</p>
+            <ul className="list-disc pl-4 space-y-1 font-mono">
+              <li><strong>Column 1 (Name):</strong> Full name of the student</li>
+              <li><strong>Column 2 (Roll Number):</strong> Unique roll identifier</li>
+              <li><strong>Column 3 (Class):</strong> Numeric class value (e.g. 1 to 12)</li>
+              <li><strong>Column 4 (Section):</strong> Section type (Pearl, Ruby, Diamond)</li>
+              <li><strong>Column 5 (Password - Optional):</strong> Plaintext password (defaults to "password123")</li>
+            </ul>
+          </div>
+
+          <div className="flex justify-end gap-2 border-t pt-4 mt-6">
+            <Button 
+              type="button" 
+              variant="outline" 
+              size="sm"
+              className="cursor-pointer"
+              onClick={() => setIsUploadOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button 
+              type="submit" 
+              size="sm"
+              className="cursor-pointer"
+            >
+              Import Students
+            </Button>
+          </div>
+        </form>
       </Modal>
 
     </div>
