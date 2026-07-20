@@ -69,6 +69,13 @@ export default function ExamScreenPage() {
   const [isSubmitOpen, setIsSubmitOpen] = React.useState(false)
   const [isSubmitting, setIsSubmitting] = React.useState(false)
 
+  // Fullscreen and cheating prevention states
+  const [isFullscreen, setIsFullscreen] = React.useState(false)
+  const [hasStarted, setHasStarted] = React.useState(false)
+  const [warningsCount, setWarningsCount] = React.useState(0)
+  const [showWarningModal, setShowWarningModal] = React.useState(false)
+  const [warningReason, setWarningReason] = React.useState("")
+
   // Load Exam Attempt Data
   React.useEffect(() => {
     if (!attemptId) {
@@ -127,6 +134,91 @@ export default function ExamScreenPage() {
 
     return () => clearInterval(timer)
   }, [timeLeft, isLoading])
+
+  // Request fullscreen wrapper
+  const enterFullscreen = () => {
+    const docEl = document.documentElement
+    if (docEl.requestFullscreen) {
+      docEl.requestFullscreen().catch(() => {})
+    } else if ((docEl as any).webkitRequestFullscreen) {
+      (docEl as any).webkitRequestFullscreen()
+    } else if ((docEl as any).mozRequestFullScreen) {
+      (docEl as any).mozRequestFullScreen()
+    } else if ((docEl as any).msRequestFullscreen) {
+      (docEl as any).msRequestFullscreen()
+    }
+    setIsFullscreen(true)
+  }
+
+  // Trigger security violation warning or automatic submit
+  const triggerViolation = React.useCallback((reason: string) => {
+    setWarningsCount(prev => {
+      const nextCount = prev + 1
+      setWarningReason(reason)
+      if (nextCount >= 3) {
+        handleViolationAutoSubmit()
+      } else {
+        setShowWarningModal(true)
+      }
+      return nextCount
+    })
+  }, [attemptId])
+
+  // Fullscreen changes detection
+  React.useEffect(() => {
+    if (isLoading || !exam || !hasStarted) return
+
+    const handleFullscreenChange = () => {
+      const isFull = !!(
+        document.fullscreenElement ||
+        (document as any).webkitFullscreenElement ||
+        (document as any).mozFullScreenElement ||
+        (document as any).msFullscreenElement
+      )
+      setIsFullscreen(isFull)
+
+      if (!isFull) {
+        triggerViolation("You exited full screen mode.")
+      }
+    }
+
+    document.addEventListener("fullscreenchange", handleFullscreenChange)
+    document.addEventListener("webkitfullscreenchange", handleFullscreenChange)
+    document.addEventListener("mozfullscreenchange", handleFullscreenChange)
+    document.addEventListener("MSFullscreenChange", handleFullscreenChange)
+
+    return () => {
+      document.removeEventListener("fullscreenchange", handleFullscreenChange)
+      document.removeEventListener("webkitfullscreenchange", handleFullscreenChange)
+      document.removeEventListener("mozfullscreenchange", handleFullscreenChange)
+      document.removeEventListener("MSFullscreenChange", handleFullscreenChange)
+    }
+  }, [isLoading, exam, hasStarted, triggerViolation])
+
+  // Tab switching, browser minimize, window blur monitoring
+  React.useEffect(() => {
+    if (isLoading || !exam || !isFullscreen || !hasStarted) return
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        triggerViolation("You switched tabs or minimized the browser.")
+      }
+    }
+
+    const handleWindowBlur = () => {
+      if (!isSubmitOpen && !showWarningModal) {
+        triggerViolation("You navigated away from the exam window.")
+      }
+    }
+
+    document.addEventListener("visibilitychange", handleVisibilityChange)
+    window.addEventListener("blur", handleWindowBlur)
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange)
+      window.removeEventListener("blur", handleWindowBlur)
+    }
+  }, [isLoading, exam, isFullscreen, hasStarted, isSubmitOpen, showWarningModal, triggerViolation])
 
   // Track visited questions when index changes
   React.useEffect(() => {
@@ -274,6 +366,28 @@ export default function ExamScreenPage() {
     }
   }
 
+  const handleViolationAutoSubmit = async () => {
+    if (!attemptId) return
+    try {
+      if (document.exitFullscreen) {
+        await document.exitFullscreen().catch(() => {})
+      } else if ((document as any).webkitExitFullscreen) {
+        await (document as any).webkitExitFullscreen().catch(() => {})
+      }
+    } catch (err) {
+      console.error(err)
+    }
+
+    try {
+      await submitAttempt(attemptId, true)
+      alert("Exam auto-submitted due to 3 consecutive academic integrity violations (switching tabs or exiting full screen).")
+    } catch (err) {
+      console.error("Violation auto submit failed:", err)
+    } finally {
+      router.push("/student")
+    }
+  }
+
   if (isLoading || !exam || questions.length === 0) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-background gap-4">
@@ -281,6 +395,41 @@ export default function ExamScreenPage() {
         <span className="text-sm font-medium text-muted-foreground animate-pulse">
           Loading secure exam window environment...
         </span>
+      </div>
+    )
+  }
+
+  if (!isFullscreen) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-background p-6">
+        <Card className="max-w-md w-full border shadow-lg text-center p-6 space-y-6">
+          <div className="flex justify-center text-amber-500">
+            <AlertTriangle className="size-16 animate-bounce" />
+          </div>
+          <div className="space-y-2">
+            <h2 className="text-xl font-bold tracking-tight">Secure Exam Mode Required</h2>
+            <p className="text-xs text-muted-foreground">
+              To proceed with **{exam?.title}**, you must enter full-screen mode.
+            </p>
+          </div>
+          <div className="bg-destructive/10 text-destructive text-[11px] p-3 rounded-lg border border-destructive/20 text-left space-y-1">
+            <p className="font-semibold text-center sm:text-left">⚠️ Monitoring & Integrity Rules:</p>
+            <ul className="list-disc list-inside space-y-1 mt-1">
+              <li>Exiting full screen will trigger a violation warning.</li>
+              <li>Switching tabs or minimizing the browser is prohibited.</li>
+              <li>Receiving 3 violations will result in automatic submission.</li>
+            </ul>
+          </div>
+          <Button 
+            className="w-full font-bold cursor-pointer bg-primary text-primary-foreground hover:bg-primary/90"
+            onClick={() => {
+              setHasStarted(true)
+              enterFullscreen()
+            }}
+          >
+            {hasStarted ? "Re-enter Full Screen & Resume Exam" : "Enter Full Screen & Start Exam"}
+          </Button>
+        </Card>
       </div>
     )
   }
@@ -300,6 +449,13 @@ export default function ExamScreenPage() {
               {exam?.title}
             </span>
           </div>
+
+          {warningsCount > 0 && (
+            <div className="flex items-center gap-1 px-2.5 py-1 rounded-full border border-destructive/20 bg-destructive/10 text-destructive text-[10px] font-bold uppercase tracking-wider animate-pulse">
+              <AlertTriangle className="size-3 shrink-0" />
+              <span>Violations: {warningsCount} / 3</span>
+            </div>
+          )}
 
           <div className="h-4 w-px bg-border hidden sm:block" />
           
@@ -583,6 +739,45 @@ export default function ExamScreenPage() {
               className="min-w-28 cursor-pointer"
             >
               {isSubmitting ? <Loader size="sm" variant="default" className="text-current" /> : "Confirm Submit"}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Security Violation Warning Modal */}
+      <Modal
+        isOpen={showWarningModal}
+        onClose={setShowWarningModal}
+        showCloseButton={false}
+        title={
+          <div className="flex items-center gap-2 text-destructive">
+            <AlertTriangle className="size-5" />
+            <span>Academic Integrity Warning</span>
+          </div>
+        }
+      >
+        <div className="space-y-4 pt-2">
+          <p className="text-xs text-foreground leading-normal">
+            A violation was detected: <strong className="text-destructive font-bold">{warningReason}</strong>
+          </p>
+          <p className="text-xs text-muted-foreground leading-normal">
+            Tab switching, minimizing, or exiting full screen is strictly prohibited and monitored.
+          </p>
+          <div className="bg-destructive/10 text-destructive text-[11px] p-3 rounded-lg border border-destructive/20 text-center font-bold">
+            Warning count: {warningsCount} / 3. 
+            {"\n"}At 3 warnings, your exam will be automatically submitted.
+          </div>
+          <div className="flex justify-end pt-2">
+            <Button 
+              type="button"
+              variant="default"
+              className="cursor-pointer w-full font-bold"
+              onClick={() => {
+                setShowWarningModal(false)
+                enterFullscreen()
+              }}
+            >
+              I Understand & Resume Exam
             </Button>
           </div>
         </div>
