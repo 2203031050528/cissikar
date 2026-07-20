@@ -37,6 +37,7 @@ interface Question {
   subject: string
   difficulty: string
   marks: number
+  classTarget?: string
 }
 
 interface Exam {
@@ -56,6 +57,9 @@ export default function ExamBuilderPage() {
   const [questions, setQuestions] = React.useState<Question[]>([])
   const [selectedQuestions, setSelectedQuestions] = React.useState<string[]>([])
   const [searchQuestion, setSearchQuestion] = React.useState("")
+  const [subjectFilter, setSubjectFilter] = React.useState("All")
+  const [difficultyFilter, setDifficultyFilter] = React.useState("All")
+  const [classFilter, setClassFilter] = React.useState("All")
   const [isSaving, setIsSaving] = React.useState(false)
   const [isLoading, setIsLoading] = React.useState(true)
 
@@ -89,13 +93,31 @@ export default function ExamBuilderPage() {
     loadData()
   }, [])
 
+  // Extract unique subjects from questions
+  const availableSubjects = React.useMemo(() => {
+    const subjectsSet = new Set<string>()
+    questions.forEach((q) => {
+      if (q.subject) {
+        subjectsSet.add(q.subject)
+      }
+    })
+    return Array.from(subjectsSet).sort()
+  }, [questions])
+
   // Filtered Questions in Picker
   const filteredQuestions = React.useMemo(() => {
-    return questions.filter(q => 
-      q.questionText.toLowerCase().includes(searchQuestion.toLowerCase()) ||
-      q.id.toLowerCase().includes(searchQuestion.toLowerCase())
-    )
-  }, [questions, searchQuestion])
+    return questions.filter(q => {
+      const matchesSearch = 
+        q.questionText.toLowerCase().includes(searchQuestion.toLowerCase()) ||
+        q.id.toLowerCase().includes(searchQuestion.toLowerCase())
+      
+      const matchesSubject = subjectFilter === "All" || q.subject === subjectFilter
+      const matchesDifficulty = difficultyFilter === "All" || q.difficulty === difficultyFilter
+      const matchesClass = classFilter === "All" || q.classTarget === classFilter
+
+      return matchesSearch && matchesSubject && matchesDifficulty && matchesClass
+    })
+  }, [questions, searchQuestion, subjectFilter, difficultyFilter, classFilter])
 
   // Handle Input Changes
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -389,6 +411,70 @@ export default function ExamBuilderPage() {
                 </div>
               </div>
             </div>
+            
+            {/* Expanded Filters */}
+            <div className="mt-3 pt-3 border-t flex flex-wrap items-center gap-4">
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-bold text-muted-foreground uppercase">Class:</span>
+                <Select value={classFilter} onValueChange={(val) => setClassFilter(val || "All")}>
+                  <SelectTrigger className="w-[100px] h-7 text-[10px] cursor-pointer">
+                    <SelectValue placeholder="All Classes" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="All">All Classes</SelectItem>
+                    {Array.from({ length: 12 }, (_, i) => String(i + 1)).map((c) => (
+                      <SelectItem key={c} value={c}>Class {c}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-bold text-muted-foreground uppercase">Subject:</span>
+                <Select value={subjectFilter} onValueChange={(val) => setSubjectFilter(val || "All")}>
+                  <SelectTrigger className="w-[120px] h-7 text-[10px] cursor-pointer">
+                    <SelectValue placeholder="All Subjects" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="All">All Subjects</SelectItem>
+                    {availableSubjects.map((sub) => (
+                      <SelectItem key={sub} value={sub}>{sub}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-bold text-muted-foreground uppercase">Difficulty:</span>
+                <Select value={difficultyFilter} onValueChange={(val) => setDifficultyFilter(val || "All")}>
+                  <SelectTrigger className="w-[110px] h-7 text-[10px] cursor-pointer">
+                    <SelectValue placeholder="All Difficulties" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="All">All</SelectItem>
+                    <SelectItem value="Easy">Easy</SelectItem>
+                    <SelectItem value="Medium">Medium</SelectItem>
+                    <SelectItem value="Hard">Hard</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {(classFilter !== "All" || subjectFilter !== "All" || difficultyFilter !== "All" || searchQuestion !== "") && (
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={() => {
+                    setSearchQuestion("")
+                    setClassFilter("All")
+                    setSubjectFilter("All")
+                    setDifficultyFilter("All")
+                  }}
+                  className="h-7 px-2 text-[10px] text-primary cursor-pointer font-semibold hover:bg-transparent hover:underline"
+                >
+                  Clear Filters
+                </Button>
+              )}
+            </div>
           </CardHeader>
 
           {/* List of Questions with checkbox */}
@@ -429,9 +515,12 @@ export default function ExamBuilderPage() {
                     </div>
 
                     <div className="flex-1 space-y-1">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-mono text-[9px] font-bold text-muted-foreground uppercase">{q.id}</span>
                         <Badge variant="outline" className="px-1.5 py-0 rounded-md text-[8px] font-normal">{q.subject}</Badge>
+                        <Badge variant="outline" className="px-1.5 py-0 rounded-md text-[8px] font-normal">
+                          {q.classTarget === "All" ? "All Classes" : `Class ${q.classTarget}`}
+                        </Badge>
                         <Badge variant="secondary" className="px-1.5 py-0 rounded-full text-[8px] font-semibold">{q.difficulty}</Badge>
                       </div>
                       <p className="text-xs text-foreground font-medium leading-relaxed">{q.questionText}</p>

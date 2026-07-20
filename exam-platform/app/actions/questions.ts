@@ -43,6 +43,7 @@ export async function getQuestions() {
     marks: Number(q.marks),
     subject: q.subject || "General",
     difficulty: getDifficultyByMarks(Number(q.marks)),
+    classTarget: q.class || "All",
   }))
 }
 
@@ -55,6 +56,7 @@ export async function createQuestion(formData: {
   correctAnswer: string
   marks: string | number
   subject: string
+  classTarget: string
 }) {
   await verifyAdmin()
 
@@ -69,6 +71,7 @@ export async function createQuestion(formData: {
       correct_option: formData.correctAnswer,
       marks: Number(formData.marks) || 1,
       subject: formData.subject,
+      class: formData.classTarget,
     })
     .select()
 
@@ -91,6 +94,7 @@ export async function updateQuestion(
     correctAnswer: string
     marks: string | number
     subject: string
+    classTarget: string
   }
 ) {
   await verifyAdmin()
@@ -106,6 +110,7 @@ export async function updateQuestion(
       correct_option: formData.correctAnswer,
       marks: Number(formData.marks) || 1,
       subject: formData.subject,
+      class: formData.classTarget,
     })
     .eq("id", id)
     .select()
@@ -162,8 +167,30 @@ export async function uploadQuestionsCSV(csvText: string) {
   const lines = csvText.split(/\r?\n/)
   if (lines.length <= 1) return { success: false, count: 0 }
 
-  const headers = lines[0].split(",").map(h => h.trim().toLowerCase())
+  const headers = parseCSVLine(lines[0]).map(h => h.trim().toLowerCase())
   const questionsToInsert: any[] = []
+
+  // Helper to resolve index from multiple possible names or a fallback default
+  const getColIndex = (names: string[], defaultIdx: number) => {
+    for (const name of names) {
+      const idx = headers.indexOf(name.toLowerCase())
+      if (idx !== -1) return idx
+    }
+    return defaultIdx
+  }
+
+  // Detect if there's an empty first column causing a shift (e.g. leading commas)
+  const shift = headers[0] === "" ? 1 : 0
+
+  const qIdx = getColIndex(["questiontext", "question_text", "question"], 0 + shift)
+  const aIdx = getColIndex(["optiona", "option_a", "a"], 1 + shift)
+  const bIdx = getColIndex(["optionb", "option_b", "b"], 2 + shift)
+  const cIdx = getColIndex(["optionc", "option_c", "c"], 3 + shift)
+  const dIdx = getColIndex(["optiond", "option_d", "d"], 4 + shift)
+  const ansIdx = getColIndex(["correctanswer", "correct_answer", "correct_option", "answer"], 5 + shift)
+  const marksIdx = getColIndex(["marks", "mark", "pts"], 6 + shift)
+  const subIdx = getColIndex(["subject", "branch"], 7 + shift)
+  const classIdx = getColIndex(["class", "class_target", "class_section"], 9 + shift)
 
   // Simple CSV parser
   for (let i = 1; i < lines.length; i++) {
@@ -174,16 +201,18 @@ export async function uploadQuestionsCSV(csvText: string) {
 
     if (row.length < 6) continue // Must have question text + 4 options + correct option
 
-    // Let's assume columns map to:
-    // questionText, optionA, optionB, optionC, optionD, correctAnswer, marks, subject
-    const questionText = row[0]
-    const optionA = row[1]
-    const optionB = row[2]
-    const optionC = row[3]
-    const optionD = row[4]
-    const correctOption = row[5]?.toUpperCase() || "A"
-    const marks = Number(row[6]) || 1
-    const subject = row[7] || "General"
+    const questionText = row[qIdx] || ""
+    const optionA = row[aIdx] || ""
+    const optionB = row[bIdx] || ""
+    const optionC = row[cIdx] || ""
+    const optionD = row[dIdx] || ""
+    const correctOption = row[ansIdx]?.toUpperCase() || "A"
+    const marks = Number(row[marksIdx]) || 1
+    const subject = row[subIdx] || "General"
+    const classTarget = row[classIdx] || "All"
+
+    // Skip header row copies if they are repeated or empty questions
+    if (!questionText || questionText.toLowerCase() === "questiontext") continue
 
     questionsToInsert.push({
       question_text: questionText,
@@ -194,6 +223,7 @@ export async function uploadQuestionsCSV(csvText: string) {
       correct_option: correctOption,
       marks,
       subject,
+      class: classTarget,
     })
   }
 
@@ -207,6 +237,31 @@ export async function uploadQuestionsCSV(csvText: string) {
 
   if (error) {
     console.error("Error uploading questions CSV:", error)
+
+    const msg = error.message || ""
+    if (
+      msg.includes("column 'class'") ||
+      msg.includes('column "class"') ||
+      msg.includes("schema cache") ||
+      error.code === "42703"
+    ) {
+      throw new Error(
+        "The database is missing the 'class' column on the 'questions' table. Please run the following SQL command in your Supabase SQL Editor first:\n\nALTER TABLE questions ADD COLUMN class TEXT;"
+      )
+    }
+
+    if (error.code === "23514") {
+      throw new Error(
+        "Check constraint violation. Please make sure that all rows have a correct answer option (correctAnswer) of 'A', 'B', 'C', or 'D' in uppercase."
+      )
+    }
+
+    if (error.code === "22001") {
+      throw new Error(
+        "Value too long for character(1). Please make sure that your 'correctAnswer' column only contains a single character ('A', 'B', 'C', or 'D')."
+      )
+    }
+
     throw new Error(error.message)
   }
 

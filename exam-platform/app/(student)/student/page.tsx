@@ -194,14 +194,16 @@ export default function StudentDashboardPage() {
                           exam.status === "Scheduled" ? "secondary" :
                           exam.status === "Passed" ? "default" :
                           exam.status === "In Progress" ? "outline" :
+                          exam.status === "Completed (Pending Publish)" ? "outline" :
                           "destructive"
                         }
                         className={`rounded-full px-2.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider ${
                           exam.status === "Passed" ? "bg-emerald-500/10 text-emerald-500 border-transparent" :
-                          exam.status === "Failed" ? "bg-destructive/10 text-destructive border-transparent" : ""
+                          exam.status === "Failed" ? "bg-destructive/10 text-destructive border-transparent" :
+                          exam.status === "Completed (Pending Publish)" ? "bg-amber-500/10 text-amber-500 border-transparent" : ""
                         }`}
                       >
-                        {exam.status}
+                        {exam.status === "Completed (Pending Publish)" ? "Awaiting Results" : exam.status}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right">
@@ -223,6 +225,15 @@ export default function StudentDashboardPage() {
                           className="cursor-pointer font-semibold text-[10px] bg-amber-500 hover:bg-amber-600 text-white border-transparent"
                         >
                           Resume
+                        </Button>
+                      ) : exam.status === "Completed (Pending Publish)" ? (
+                        <Button 
+                          variant="ghost" 
+                          size="xs" 
+                          disabled
+                          className="text-[10px] font-medium text-muted-foreground"
+                        >
+                          Pending
                         </Button>
                       ) : (
                         <Button 

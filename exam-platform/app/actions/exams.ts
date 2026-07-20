@@ -69,6 +69,7 @@ export async function getExamsAdmin() {
       status: getExamStatus(exam.start_time, exam.end_time),
       randomizeQuestions: exam.randomize_questions,
       numQuestionsToServe: exam.num_questions_to_serve,
+      resultsPublished: exam.results_published || false,
     })
   }
 
@@ -225,6 +226,8 @@ export async function getExamsStudent() {
     }
     maxMarks = String(examMaxMarks)
 
+    const isPublished = exam.results_published || false
+
     if (attempt) {
       attemptId = attempt.id
       if (attempt.status === "in_progress") {
@@ -234,18 +237,27 @@ export async function getExamsStudent() {
           isLaunchable = true
         } else {
           // If past deadline, it should count as submitted
-          status = "Submitted"
-          marks = attempt.total_score !== null ? String(attempt.total_score) : "0"
+          if (!isPublished) {
+            status = "Completed (Pending Publish)"
+            marks = "--"
+          } else {
+            status = "Submitted"
+            marks = attempt.total_score !== null ? String(attempt.total_score) : "0"
+          }
         }
       } else {
-        status = attempt.status === "submitted" || attempt.status === "auto_submitted" ? "Passed" : "Failed" // map outcome
-        // Let's just use Passed/Failed based on 50% score or just show "Completed"
-        const score = Number(attempt.total_score) || 0
-        marks = String(score)
-        if (examMaxMarks > 0 && (score / examMaxMarks) < 0.5) {
-          status = "Failed"
+        if (!isPublished) {
+          status = "Completed (Pending Publish)"
+          marks = "--"
         } else {
-          status = "Passed"
+          status = attempt.status === "submitted" || attempt.status === "auto_submitted" ? "Passed" : "Failed" // map outcome
+          const score = Number(attempt.total_score) || 0
+          marks = String(score)
+          if (examMaxMarks > 0 && (score / examMaxMarks) < 0.5) {
+            status = "Failed"
+          } else {
+            status = "Passed"
+          }
         }
       }
     } else {
@@ -582,6 +594,11 @@ export async function getAttemptResults(attemptId: string) {
 
   if (examError) throw new Error(examError.message)
 
+  // If student is requesting, check if results are published
+  if ((session.user as any).role === "student" && !exam.results_published) {
+    throw new Error("Results for this exam have not been published by the administrator yet.")
+  }
+
   // Fetch responses
   const { data: responses, error: rError } = await supabaseAdmin
     .from("responses")
@@ -854,4 +871,123 @@ export async function getExamsPublic() {
   }
 
   return results
+}
+
+// 12. Toggle publish/unpublish of exam results
+export async function togglePublishResults(examId: string, publish: boolean) {
+  await verifyAdmin()
+
+  const { data, error } = await supabaseAdmin
+    .from("exams")
+    .update({ results_published: publish })
+    .eq("id", examId)
+    .select()
+
+  if (error) {
+    console.error("Error toggling results publication:", error)
+    throw new Error(error.message)
+  }
+
+  return { success: true, exam: data[0] }
+}
+
+// 13. Get Exam Attempts Report for Admin
+export async function getExamAttemptsReport(examId: string) {
+  await verifyAdmin()
+
+  // 1. Fetch exam details
+  const { data: exam, error: examError } = await supabaseAdmin
+    .from("exams")
+    .select("*")
+    .eq("id", examId)
+    .single()
+
+  if (examError) throw new Error(examError.message)
+
+  // 2. Fetch questions in exam (to calculate max marks)
+  const { data: eqData, error: eqError } = await supabaseAdmin
+    .from("exam_questions")
+    .select("question_id")
+    .eq("exam_id", examId)
+
+  if (eqError) throw new Error(eqError.message)
+
+  const questionIds = eqData.map((x) => x.question_id)
+  let maxMarks = 0
+  if (questionIds.length > 0) {
+    const { data: qData } = await supabaseAdmin
+      .from("questions")
+      .select("marks")
+      .in("id", questionIds)
+    maxMarks = qData?.reduce((sum, q) => sum + Number(q.marks), 0) || 0
+  }
+
+  // 3. Fetch attempts for this exam
+  const { data: attempts, error: attError } = await supabaseAdmin
+    .from("attempts")
+    .select("*, users(full_name, roll_number, class_section)")
+    .eq("exam_id", examId)
+    .neq("status", "in_progress") // only show completed attempts
+
+  if (attError) throw new Error(attError.message)
+
+  const takers = (attempts || []).map((att) => {
+    const scoreVal = Number(att.total_score) || 0
+    const pct = maxMarks > 0 ? Math.round((scoreVal / maxMarks) * 100) : 0
+    const passed = pct >= 50
+
+    return {
+      attemptId: att.id,
+      studentName: (att.users as any)?.full_name || "Unknown Student",
+      rollNumber: (att.users as any)?.roll_number || "N/A",
+      classSection: (att.users as any)?.class_section || "N/A",
+      startedAt: att.started_at,
+      submittedAt: att.submitted_at || att.started_at,
+      score: scoreVal,
+      percentage: pct,
+      passed,
+      status: att.status, // "submitted" or "auto_submitted"
+    }
+  })
+
+  // 4. Compute overall metrics
+  const totalAttempts = takers.length
+  let avgPercentage = 0
+  let highestPercentage = 0
+  let lowestPercentage = totalAttempts > 0 ? 100 : 0
+  let passCount = 0
+
+  if (totalAttempts > 0) {
+    let sumPercentages = 0
+    takers.forEach((t) => {
+      sumPercentages += t.percentage
+      if (t.percentage > highestPercentage) highestPercentage = t.percentage
+      if (t.percentage < lowestPercentage) lowestPercentage = t.percentage
+      if (t.passed) passCount++
+    })
+    avgPercentage = Math.round(sumPercentages / totalAttempts)
+  }
+
+  const passRate = totalAttempts > 0 ? Math.round((passCount / totalAttempts) * 100) : 0
+
+  return {
+    exam: {
+      id: exam.id,
+      title: exam.title,
+      duration: exam.duration_minutes,
+      startTime: exam.start_time,
+      endTime: exam.end_time,
+      classSection: exam.class_section,
+      resultsPublished: exam.results_published || false,
+      maxMarks,
+    },
+    metrics: {
+      totalAttempts,
+      avgPercentage,
+      highestPercentage,
+      lowestPercentage,
+      passRate,
+    },
+    attempts: takers,
+  }
 }

@@ -52,6 +52,7 @@ interface Question {
   marks: number
   subject: string
   difficulty: string
+  classTarget?: string
 }
 
 export default function QuestionBankPage() {
@@ -60,6 +61,7 @@ export default function QuestionBankPage() {
   const [search, setSearch] = React.useState("")
   const [subjectFilter, setSubjectFilter] = React.useState("All")
   const [difficultyFilter, setDifficultyFilter] = React.useState("All")
+  const [classFilter, setClassFilter] = React.useState("All")
   
   // Pagination State
   const [currentPage, setCurrentPage] = React.useState(1)
@@ -82,6 +84,7 @@ export default function QuestionBankPage() {
     correctAnswer: "A",
     marks: "2",
     subject: "Tech",
+    classTarget: "All",
     difficulty: "Easy"
   })
 
@@ -102,6 +105,17 @@ export default function QuestionBankPage() {
     loadQuestions()
   }, [])
 
+  // Extract unique subjects from questions
+  const availableSubjects = React.useMemo(() => {
+    const subjectsSet = new Set<string>()
+    questions.forEach((q) => {
+      if (q.subject) {
+        subjectsSet.add(q.subject)
+      }
+    })
+    return Array.from(subjectsSet).sort()
+  }, [questions])
+
   // Filter & Search Logic
   const filteredQuestions = React.useMemo(() => {
     return questions.filter((q) => {
@@ -111,15 +125,16 @@ export default function QuestionBankPage() {
       
       const matchesSubject = subjectFilter === "All" || q.subject === subjectFilter
       const matchesDifficulty = difficultyFilter === "All" || q.difficulty === difficultyFilter
+      const matchesClass = classFilter === "All" || q.classTarget === classFilter
 
-      return matchesSearch && matchesSubject && matchesDifficulty
+      return matchesSearch && matchesSubject && matchesDifficulty && matchesClass
     })
-  }, [questions, search, subjectFilter, difficultyFilter])
+  }, [questions, search, subjectFilter, difficultyFilter, classFilter])
 
   // Reset page on filter changes
   React.useEffect(() => {
     setCurrentPage(1)
-  }, [search, subjectFilter, difficultyFilter])
+  }, [search, subjectFilter, difficultyFilter, classFilter])
 
   // Paginated Questions
   const paginatedQuestions = React.useMemo(() => {
@@ -149,6 +164,7 @@ export default function QuestionBankPage() {
       correctAnswer: "A",
       marks: "2",
       subject: "Tech",
+      classTarget: "All",
       difficulty: "Easy"
     })
     setTargetQuestion(null)
@@ -180,6 +196,7 @@ export default function QuestionBankPage() {
         correctAnswer: formData.correctAnswer,
         marks: formData.marks,
         subject: formData.subject,
+        classTarget: formData.classTarget,
       })
       setIsAddOpen(false)
       resetForm()
@@ -203,6 +220,7 @@ export default function QuestionBankPage() {
       correctAnswer: q.correctAnswer,
       marks: String(q.marks),
       subject: q.subject,
+      classTarget: q.classTarget || "All",
       difficulty: q.difficulty
     })
     setIsEditOpen(true)
@@ -235,6 +253,7 @@ export default function QuestionBankPage() {
         correctAnswer: formData.correctAnswer,
         marks: formData.marks,
         subject: formData.subject,
+        classTarget: formData.classTarget,
       })
       setIsEditOpen(false)
       resetForm()
@@ -359,15 +378,14 @@ export default function QuestionBankPage() {
                 <span>Subject:</span>
               </span>
               <Select value={subjectFilter} onValueChange={(val) => setSubjectFilter(val || "All")}>
-                <SelectTrigger className="w-[120px] h-8 text-xs cursor-pointer">
+                <SelectTrigger className="w-[140px] h-8 text-xs cursor-pointer">
                   <SelectValue placeholder="All Subjects" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="All">All Subjects</SelectItem>
-                  <SelectItem value="Tech">Tech</SelectItem>
-                  <SelectItem value="Science">Science</SelectItem>
-                  <SelectItem value="Math">Math</SelectItem>
-                  <SelectItem value="Business">Business</SelectItem>
+                  {availableSubjects.map((sub) => (
+                    <SelectItem key={sub} value={sub}>{sub}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -387,6 +405,25 @@ export default function QuestionBankPage() {
                   <SelectItem value="Easy">Easy</SelectItem>
                   <SelectItem value="Medium">Medium</SelectItem>
                   <SelectItem value="Hard">Hard</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Class Select */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-muted-foreground flex items-center gap-1">
+                <Filter className="size-3" />
+                <span>Class:</span>
+              </span>
+              <Select value={classFilter} onValueChange={(val) => setClassFilter(val || "All")}>
+                <SelectTrigger className="w-[110px] h-8 text-xs cursor-pointer">
+                  <SelectValue placeholder="All Classes" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="All">All Classes</SelectItem>
+                  {Array.from({ length: 12 }, (_, i) => String(i + 1)).map((c) => (
+                    <SelectItem key={c} value={c}>Class {c}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -414,6 +451,7 @@ export default function QuestionBankPage() {
                   setSearch("")
                   setSubjectFilter("All")
                   setDifficultyFilter("All")
+                  setClassFilter("All")
                 }} 
                 className="text-primary text-xs font-semibold"
               >
@@ -427,6 +465,7 @@ export default function QuestionBankPage() {
                   <TableHead className="w-[70px]">ID</TableHead>
                   <TableHead className="min-w-[250px] max-w-[400px]">Question Text</TableHead>
                   <TableHead>Subject</TableHead>
+                  <TableHead>Class</TableHead>
                   <TableHead>Difficulty</TableHead>
                   <TableHead className="text-center">Answer</TableHead>
                   <TableHead className="text-center">Marks</TableHead>
@@ -448,6 +487,11 @@ export default function QuestionBankPage() {
                     <TableCell>
                       <Badge variant="outline" className="rounded-md px-2 py-0.5 text-xs font-normal">
                         {q.subject}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="rounded-md px-2 py-0.5 text-xs font-normal">
+                        {q.classTarget === "All" ? "All Classes" : `Class ${q.classTarget}`}
                       </Badge>
                     </TableCell>
                     <TableCell>
@@ -578,7 +622,7 @@ export default function QuestionBankPage() {
           </div>
           <div className="text-[10px] text-muted-foreground leading-normal">
             <p className="font-bold text-foreground">Expected CSV Column Structure:</p>
-            <p>questionText, optionA, optionB, optionC, optionD, correctAnswer, marks, subject, difficulty</p>
+            <p className="font-mono bg-muted/30 p-2 rounded-md border mt-1">questionText, optionA, optionB, optionC, optionD, correctAnswer, marks, subject, difficulty, class</p>
           </div>
           <div className="flex justify-end gap-2 border-t pt-4 mt-6">
             <Button type="button" variant="outline" size="sm" onClick={() => setIsUploadOpen(false)}>
@@ -719,37 +763,54 @@ export default function QuestionBankPage() {
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-bold text-muted-foreground">
+              <label className="text-xs font-bold text-muted-foreground" htmlFor="subject">
                 Subject Branch *
               </label>
-              <Select value={formData.subject} onValueChange={(val) => handleSelectChange("subject", val || "Tech")}>
-                <SelectTrigger className="w-full h-8 text-xs cursor-pointer">
-                  <SelectValue placeholder="Subject" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Tech">Tech</SelectItem>
-                  <SelectItem value="Science">Science</SelectItem>
-                  <SelectItem value="Math">Math</SelectItem>
-                  <SelectItem value="Business">Business</SelectItem>
-                </SelectContent>
-              </Select>
+              <Input
+                id="subject"
+                name="subject"
+                placeholder="e.g. English, Mathematics"
+                className="h-8 text-xs"
+                value={formData.subject}
+                onChange={handleInputChange}
+                required
+              />
             </div>
           </div>
 
-          <div className="space-y-1">
-            <label className="text-xs font-bold text-muted-foreground">
-              Difficulty Tier *
-            </label>
-            <Select value={formData.difficulty} onValueChange={(val) => handleSelectChange("difficulty", val || "Easy")}>
-              <SelectTrigger className="w-full h-8 text-xs cursor-pointer">
-                <SelectValue placeholder="Difficulty" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Easy">Easy</SelectItem>
-                <SelectItem value="Medium">Medium</SelectItem>
-                <SelectItem value="Hard">Hard</SelectItem>
-              </SelectContent>
-            </Select>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-muted-foreground">
+                Difficulty Tier *
+              </label>
+              <Select value={formData.difficulty} onValueChange={(val) => handleSelectChange("difficulty", val || "Easy")}>
+                <SelectTrigger className="w-full h-8 text-xs cursor-pointer">
+                  <SelectValue placeholder="Difficulty" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Easy">Easy</SelectItem>
+                  <SelectItem value="Medium">Medium</SelectItem>
+                  <SelectItem value="Hard">Hard</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-muted-foreground">
+                Target Class *
+              </label>
+              <Select value={formData.classTarget} onValueChange={(val) => handleSelectChange("classTarget", val || "All")}>
+                <SelectTrigger className="w-full h-8 text-xs cursor-pointer">
+                  <SelectValue placeholder="Target Class" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="All">All Classes</SelectItem>
+                  {Array.from({ length: 12 }, (_, i) => String(i + 1)).map((c) => (
+                    <SelectItem key={c} value={c}>Class {c}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           <div className="flex justify-end gap-2 border-t pt-4 mt-6">
@@ -886,37 +947,54 @@ export default function QuestionBankPage() {
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-bold text-muted-foreground">
+              <label className="text-xs font-bold text-muted-foreground" htmlFor="edit-subject">
                 Subject Branch *
               </label>
-              <Select value={formData.subject} onValueChange={(val) => handleSelectChange("subject", val || "Tech")}>
-                <SelectTrigger className="w-full h-8 text-xs cursor-pointer">
-                  <SelectValue placeholder="Subject" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Tech">Tech</SelectItem>
-                  <SelectItem value="Science">Science</SelectItem>
-                  <SelectItem value="Math">Math</SelectItem>
-                  <SelectItem value="Business">Business</SelectItem>
-                </SelectContent>
-              </Select>
+              <Input
+                id="edit-subject"
+                name="subject"
+                placeholder="e.g. English, Mathematics"
+                className="h-8 text-xs"
+                value={formData.subject}
+                onChange={handleInputChange}
+                required
+              />
             </div>
           </div>
 
-          <div className="space-y-1">
-            <label className="text-xs font-bold text-muted-foreground">
-              Difficulty Tier *
-            </label>
-            <Select value={formData.difficulty} onValueChange={(val) => handleSelectChange("difficulty", val || "Easy")}>
-              <SelectTrigger className="w-full h-8 text-xs cursor-pointer">
-                <SelectValue placeholder="Difficulty" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Easy">Easy</SelectItem>
-                <SelectItem value="Medium">Medium</SelectItem>
-                <SelectItem value="Hard">Hard</SelectItem>
-              </SelectContent>
-            </Select>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-muted-foreground">
+                Difficulty Tier *
+              </label>
+              <Select value={formData.difficulty} onValueChange={(val) => handleSelectChange("difficulty", val || "Easy")}>
+                <SelectTrigger className="w-full h-8 text-xs cursor-pointer">
+                  <SelectValue placeholder="Difficulty" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Easy">Easy</SelectItem>
+                  <SelectItem value="Medium">Medium</SelectItem>
+                  <SelectItem value="Hard">Hard</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-muted-foreground">
+                Target Class *
+              </label>
+              <Select value={formData.classTarget} onValueChange={(val) => handleSelectChange("classTarget", val || "All")}>
+                <SelectTrigger className="w-full h-8 text-xs cursor-pointer">
+                  <SelectValue placeholder="Target Class" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="All">All Classes</SelectItem>
+                  {Array.from({ length: 12 }, (_, i) => String(i + 1)).map((c) => (
+                    <SelectItem key={c} value={c}>Class {c}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           <div className="flex justify-end gap-2 border-t pt-4 mt-6">
