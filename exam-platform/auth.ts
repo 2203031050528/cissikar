@@ -103,6 +103,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           email: user.email,
           role: user.role,
           roll_number: user.roll_number,
+          class_section: user.class_section,
         };
       },
     }),
@@ -114,6 +115,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         token.id = user.id;
         token.role = (user as any).role;
         token.roll_number = (user as any).roll_number;
+        token.class_section = (user as any).class_section;
       }
 
       return token;
@@ -124,6 +126,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         session.user.id = token.id as string;
         (session.user as any).role = token.role;
         (session.user as any).roll_number = token.roll_number;
+        (session.user as any).class_section = token.class_section;
       }
 
       return session;

@@ -10,18 +10,52 @@ import {
   Hash,
   GraduationCap,
   Shield,
-  Calendar,
+  Layers,
   LogOut,
+  Building,
 } from "lucide-react"
 import { Loader } from "@/components/ui/loader"
 
 import { useSession, signOut } from "next-auth/react"
 import { useRouter } from "next/navigation"
+import { getStudentProfile } from "@/app/actions/exams"
+
+interface ProfileData {
+  id: string
+  fullName: string
+  email: string
+  rollNumber: string
+  classSection: string
+  role: string
+  createdAt?: string
+}
 
 export default function StudentProfilePage() {
   const router = useRouter()
   const { data: session, status } = useSession()
+  const [profile, setProfile] = React.useState<ProfileData | null>(null)
+  const [isLoading, setIsLoading] = React.useState(true)
   const [isLoggingOut, setIsLoggingOut] = React.useState(false)
+
+  React.useEffect(() => {
+    async function loadProfile() {
+      setIsLoading(true)
+      try {
+        const data = await getStudentProfile()
+        setProfile(data)
+      } catch (err) {
+        console.error("Error loading student profile:", err)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    if (status === "authenticated") {
+      loadProfile()
+    } else if (status === "unauthenticated") {
+      setIsLoading(false)
+    }
+  }, [status])
 
   const handleLogout = async () => {
     setIsLoggingOut(true)
@@ -34,22 +68,48 @@ export default function StudentProfilePage() {
     }
   }
 
-  if (status === "loading") {
+  if (status === "loading" || isLoading) {
     return (
       <div className="h-96 flex flex-col items-center justify-center gap-3">
         <Loader size="lg" />
         <span className="text-sm font-medium text-muted-foreground animate-pulse">
-          Loading profile...
+          Loading student profile...
         </span>
       </div>
     )
   }
 
   const user = session?.user
-  const fullName = user?.name || "Student User"
-  const email = user?.email || "Not provided"
-  const rollNumber = (user as any)?.roll_number || "N/A"
-  const role = (user as any)?.role || "student"
+  const fullName = profile?.fullName || user?.name || "Student User"
+  const email = profile?.email || user?.email || "Not provided"
+  const rollNumber = profile?.rollNumber || (user as any)?.roll_number || "N/A"
+  const role = profile?.role || (user as any)?.role || "student"
+  const rawClassSection = profile?.classSection || (user as any)?.class_section || "10-Pearl"
+
+  // Parse Class and Section
+  const parseClassSection = (str: string) => {
+    if (!str) return { classVal: "10", sectionVal: "Pearl" }
+    const parts = str.split("-")
+    if (parts.length === 2) {
+      let sec = parts[1]
+      if (sec === "A") sec = "Pearl"
+      if (sec === "B") sec = "Ruby"
+      if (sec === "C") sec = "Diamond"
+      return { classVal: parts[0], sectionVal: sec }
+    }
+    const match = str.match(/^(\d+)(.*)$/)
+    if (match) {
+      const num = match[1]
+      let sec = match[2].replace(/^-/, "") || "Pearl"
+      if (sec === "A") sec = "Pearl"
+      if (sec === "B") sec = "Ruby"
+      if (sec === "C") sec = "Diamond"
+      return { classVal: num, sectionVal: sec }
+    }
+    return { classVal: "10", sectionVal: "Pearl" }
+  }
+
+  const { classVal, sectionVal } = parseClassSection(rawClassSection)
 
   // Compute initials
   const initials = fullName
@@ -64,10 +124,10 @@ export default function StudentProfilePage() {
       {/* Page Header */}
       <div>
         <h1 className="font-heading text-xl font-bold tracking-tight text-foreground">
-          My Profile
+          My Student Profile
         </h1>
         <p className="text-xs text-muted-foreground mt-0.5">
-          View your account information and session details.
+          View your academic registration details, class, section, and credentials.
         </p>
       </div>
 
@@ -82,12 +142,20 @@ export default function StudentProfilePage() {
 
             <div className="space-y-1">
               <h2 className="text-lg font-bold tracking-tight">{fullName}</h2>
-              <Badge
-                variant="secondary"
-                className="rounded-full px-3 py-0.5 text-[10px] font-semibold uppercase tracking-wider"
-              >
-                {role}
-              </Badge>
+              <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                <Badge
+                  variant="secondary"
+                  className="rounded-full px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-wider bg-primary/10 text-primary border-transparent"
+                >
+                  Class {classVal} - {sectionVal}
+                </Badge>
+                <Badge
+                  variant="outline"
+                  className="rounded-full px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-wider"
+                >
+                  {role}
+                </Badge>
+              </div>
             </div>
 
             <div className="w-full border-t pt-4 mt-2">
@@ -103,7 +171,7 @@ export default function StudentProfilePage() {
                 ) : (
                   <>
                     <LogOut className="size-4" />
-                    <span>Logout</span>
+                    <span>Logout Session</span>
                   </>
                 )}
               </Button>
@@ -114,9 +182,9 @@ export default function StudentProfilePage() {
         {/* Details Card */}
         <Card className="border shadow-xs md:col-span-2">
           <CardHeader className="pb-3 border-b">
-            <CardTitle className="text-base font-bold">Account Information</CardTitle>
+            <CardTitle className="text-base font-bold">Academic & Account Details</CardTitle>
             <CardDescription className="text-xs">
-              Your personal details as registered in the system.
+              Your registered academic class, section, roll number, and contact info.
             </CardDescription>
           </CardHeader>
           <CardContent className="pt-6 space-y-5">
@@ -128,22 +196,40 @@ export default function StudentProfilePage() {
                 color: "text-primary bg-primary/10",
               },
               {
-                label: "Email Address",
-                value: email,
-                icon: Mail,
-                color: "text-blue-500 bg-blue-500/10",
-              },
-              {
                 label: "Roll Number",
                 value: rollNumber,
                 icon: Hash,
                 color: "text-amber-500 bg-amber-500/10",
               },
               {
-                label: "Role",
+                label: "Academic Class",
+                value: `Class ${classVal}`,
+                icon: GraduationCap,
+                color: "text-purple-500 bg-purple-500/10",
+              },
+              {
+                label: "Section",
+                value: sectionVal,
+                icon: Layers,
+                color: "text-emerald-500 bg-emerald-500/10",
+              },
+              {
+                label: "Class & Section Combined",
+                value: `Class ${classVal} - Section ${sectionVal} (${rawClassSection})`,
+                icon: Building,
+                color: "text-blue-500 bg-blue-500/10",
+              },
+              {
+                label: "Email Address",
+                value: email,
+                icon: Mail,
+                color: "text-cyan-500 bg-cyan-500/10",
+              },
+              {
+                label: "User Role",
                 value: role.charAt(0).toUpperCase() + role.slice(1),
                 icon: Shield,
-                color: "text-emerald-500 bg-emerald-500/10",
+                color: "text-rose-500 bg-rose-500/10",
               },
             ].map((item, i) => {
               const Icon = item.icon
@@ -172,11 +258,10 @@ export default function StudentProfilePage() {
             <Shield className="size-4" />
           </div>
           <div className="space-y-0.5">
-            <p className="text-xs font-semibold text-foreground">Security Notice</p>
+            <p className="text-xs font-semibold text-foreground">Academic Profile Notice</p>
             <p className="text-[11px] text-muted-foreground leading-relaxed">
-              Your account is secured with encrypted credentials. All exam sessions are monitored 
-              for academic integrity. Contact your institution's administrator if you need to update 
-              your account details or reset your password.
+              Your registered Class and Section determine which examinations are assigned to your portal. 
+              If your assigned Class or Section is incorrect, please contact your school administrator.
             </p>
           </div>
         </CardContent>

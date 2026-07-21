@@ -173,10 +173,11 @@ export async function getExamsStudent() {
 
   const targetSection = studentUser.class_section
 
-  // Fetch exams matching target class_section (or all if exam section is null/empty)
+  // Fetch exams matching target class_section (or all if exam section is null/empty/All)
   let query = supabaseAdmin.from("exams").select("*")
   if (targetSection) {
-    query = query.or(`class_section.eq.${targetSection},class_section.is.null`)
+    const classOnly = targetSection.split("-")[0]
+    query = query.or(`class_section.eq.${targetSection},class_section.eq.${classOnly},class_section.eq.All,class_section.is.null`)
   }
 
   const { data: exams, error: examsError } = await query
@@ -989,5 +990,31 @@ export async function getExamAttemptsReport(examId: string) {
       passRate,
     },
     attempts: takers,
+  }
+}
+
+export async function getStudentProfile() {
+  const session = await verifyAuth()
+  const studentId = session.user.id
+
+  const { data, error } = await supabaseAdmin
+    .from("users")
+    .select("id, full_name, email, roll_number, class_section, role, created_at")
+    .eq("id", studentId)
+    .single()
+
+  if (error) {
+    console.error("Error fetching student profile:", error)
+    throw new Error(error.message)
+  }
+
+  return {
+    id: data.id,
+    fullName: data.full_name,
+    email: data.email || "Not provided",
+    rollNumber: data.roll_number || "N/A",
+    classSection: data.class_section || "10-Pearl",
+    role: data.role || "student",
+    createdAt: data.created_at,
   }
 }

@@ -275,21 +275,30 @@ export default function ExamBuilderPage() {
 
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-muted-foreground">
-                    Target Class *
+                    Target Class & Section *
                   </label>
                   <Select value={formFields.classTarget} onValueChange={(val) => handleClassChange(val || "All")}>
                     <SelectTrigger className="w-full h-9 text-xs cursor-pointer">
-                      <SelectValue placeholder="Select Class" />
+                      <SelectValue placeholder="Select Class & Section" />
                     </SelectTrigger>
-                    <SelectContent className="max-h-60 overflow-y-auto">
-                      <SelectItem value="All">All Classes</SelectItem>
+                    <SelectContent className="max-h-64 overflow-y-auto">
+                      <SelectItem value="All">All Classes & Sections</SelectItem>
                       {Array.from({ length: 12 }, (_, i) => String(i + 1)).map((c) => (
-                        <SelectItem key={c} value={c}>Class {c}</SelectItem>
+                        <React.Fragment key={c}>
+                          <SelectItem value={c} className="font-bold">
+                            Class {c} (All Sections)
+                          </SelectItem>
+                          <SelectItem value={`${c}-Pearl`} className="pl-6">
+                            Class {c} - Pearl
+                          </SelectItem>
+                          <SelectItem value={`${c}-Ruby`} className="pl-6">
+                            Class {c} - Ruby
+                          </SelectItem>
+                          <SelectItem value={`${c}-Diamond`} className="pl-6">
+                            Class {c} - Diamond
+                          </SelectItem>
+                        </React.Fragment>
                       ))}
-                      <SelectItem value="10-A">10-A</SelectItem>
-                      <SelectItem value="10-B">10-B</SelectItem>
-                      <SelectItem value="11-A">11-A</SelectItem>
-                      <SelectItem value="12-A">12-A</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -587,7 +596,11 @@ export default function ExamBuilderPage() {
                     <TableCell className="font-semibold text-xs text-foreground">{exam.name}</TableCell>
                     <TableCell>
                       <Badge variant="outline" className="rounded-md px-2 py-0.5 text-xs font-normal">
-                        {exam.classTarget}
+                        {exam.classTarget === "All" || !exam.classTarget
+                          ? "All Classes"
+                          : exam.classTarget.includes("-")
+                          ? `Class ${exam.classTarget.replace("-", " - ")}`
+                          : `Class ${exam.classTarget}`}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">{exam.duration} mins</TableCell>
