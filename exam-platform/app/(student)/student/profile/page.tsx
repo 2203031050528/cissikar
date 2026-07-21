@@ -12,7 +12,6 @@ import {
   Shield,
   Layers,
   LogOut,
-  Building,
 } from "lucide-react"
 import { Loader } from "@/components/ui/loader"
 
@@ -212,12 +211,6 @@ export default function StudentProfilePage() {
                 value: sectionVal,
                 icon: Layers,
                 color: "text-emerald-500 bg-emerald-500/10",
-              },
-              {
-                label: "Class & Section Combined",
-                value: `Class ${classVal} - Section ${sectionVal} (${rawClassSection})`,
-                icon: Building,
-                color: "text-blue-500 bg-blue-500/10",
               },
               {
                 label: "Email Address",
