@@ -69,7 +69,7 @@ export default function ExamBuilderPage() {
     duration: "",
     startTime: "",
     endTime: "",
-    classTarget: "10-A",
+    classTarget: "All",
     numQuestionsToServe: "",
     randomizeQuestions: true
   })
@@ -183,7 +183,7 @@ export default function ExamBuilderPage() {
         duration: "",
         startTime: "",
         endTime: "",
-        classTarget: "10-A",
+        classTarget: "All",
         numQuestionsToServe: "",
         randomizeQuestions: true
       })
@@ -277,11 +277,15 @@ export default function ExamBuilderPage() {
                   <label className="text-xs font-bold text-muted-foreground">
                     Target Class *
                   </label>
-                  <Select value={formFields.classTarget} onValueChange={(val) => handleClassChange(val || "10-A")}>
+                  <Select value={formFields.classTarget} onValueChange={(val) => handleClassChange(val || "All")}>
                     <SelectTrigger className="w-full h-9 text-xs cursor-pointer">
                       <SelectValue placeholder="Select Class" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="max-h-60 overflow-y-auto">
+                      <SelectItem value="All">All Classes</SelectItem>
+                      {Array.from({ length: 12 }, (_, i) => String(i + 1)).map((c) => (
+                        <SelectItem key={c} value={c}>Class {c}</SelectItem>
+                      ))}
                       <SelectItem value="10-A">10-A</SelectItem>
                       <SelectItem value="10-B">10-B</SelectItem>
                       <SelectItem value="11-A">11-A</SelectItem>
