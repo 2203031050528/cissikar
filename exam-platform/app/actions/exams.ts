@@ -822,12 +822,13 @@ export async function getAdminMetrics() {
       passRate: `${passRate}%`,
     },
     recentExams: (recentExamsData || []).map((e) => ({
+      id: e.id,
       code: e.title.split(" ")[0] || "EXAM",
       title: e.title,
       questions: e.num_questions_to_serve || 10,
       date: new Date(e.start_time).toLocaleDateString("en-US", { month: "short", day: "2-digit" }),
       duration: `${e.duration_minutes}m`,
-      takers: 0, // we can compute attempts size if we want, but for dashboard listing simple is fine
+      takers: 0,
     })),
     recentStudents: (recentStudentsData || []).map((s) => ({
       roll: s.roll_number || "N/A",

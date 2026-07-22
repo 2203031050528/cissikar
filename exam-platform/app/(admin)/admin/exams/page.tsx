@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { toast } from "sonner"
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -83,7 +84,7 @@ export default function ExamBuilderPage() {
       setExams(eData)
     } catch (err: any) {
       console.error(err)
-      alert(err.message || "Failed to load database items.")
+      toast.error(err.message || "Failed to load database items.")
     } finally {
       setIsLoading(false)
     }
@@ -155,12 +156,12 @@ export default function ExamBuilderPage() {
     e.preventDefault()
 
     if (!formFields.name || !formFields.duration || !formFields.startTime || !formFields.endTime) {
-      alert("Please fill in all exam parameters.")
+      toast.warning("Please fill in all exam parameters.")
       return
     }
 
     if (selectedQuestions.length === 0) {
-      alert("Please pick at least one question for this exam.")
+      toast.warning("Please pick at least one question for this exam.")
       return
     }
 
@@ -188,11 +189,11 @@ export default function ExamBuilderPage() {
         randomizeQuestions: true
       })
       setSelectedQuestions([])
-      alert(`Exam built and saved successfully!`)
+      toast.success("Exam built and saved successfully!")
       await loadData()
     } catch (err: any) {
       console.error(err)
-      alert(err.message || "Failed to save exam layouts.")
+      toast.error(err.message || "Failed to save exam layouts.")
     } finally {
       setIsSaving(false)
     }
@@ -206,7 +207,7 @@ export default function ExamBuilderPage() {
       await loadData()
     } catch (err: any) {
       console.error(err)
-      alert(err.message || "Failed to delete exam.")
+      toast.error(err.message || "Failed to delete exam.")
       setIsLoading(false)
     }
   }

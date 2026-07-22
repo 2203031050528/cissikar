@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { toast } from "sonner"
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -113,7 +114,7 @@ export default function StudentsManagementPage() {
       setStudents(data)
     } catch (err: any) {
       console.error(err)
-      alert(err.message || "Failed to load students.")
+      toast.error(err.message || "Failed to load students.")
     } finally {
       setIsLoading(false)
     }
@@ -176,13 +177,13 @@ export default function StudentsManagementPage() {
     
     // Quick validation
     if (!formData.name || !formData.rollNumber) {
-      alert("Please fill all the required fields.")
+      toast.warning("Please fill all the required fields.")
       return
     }
 
     const isRollExists = students.some((s) => s.rollNumber === formData.rollNumber)
     if (isRollExists) {
-      alert("A student with this Roll Number already exists.")
+      toast.error("A student with this Roll Number already exists.")
       return
     }
 
@@ -200,7 +201,7 @@ export default function StudentsManagementPage() {
       await loadStudents()
     } catch (err: any) {
       console.error(err)
-      alert(err.message || "Failed to create student.")
+      toast.error(err.message || "Failed to create student.")
       setIsLoading(false)
     }
   }
@@ -226,7 +227,7 @@ export default function StudentsManagementPage() {
     if (!targetStudent) return
 
     if (!formData.name || !formData.rollNumber) {
-      alert("Please fill all required fields.")
+      toast.warning("Please fill all required fields.")
       return
     }
 
@@ -243,7 +244,7 @@ export default function StudentsManagementPage() {
       await loadStudents()
     } catch (err: any) {
       console.error(err)
-      alert(err.message || "Failed to update student.")
+      toast.error(err.message || "Failed to update student.")
       setIsLoading(false)
     }
   }
@@ -265,7 +266,7 @@ export default function StudentsManagementPage() {
       await loadStudents()
     } catch (err: any) {
       console.error(err)
-      alert(err.message || "Failed to delete student.")
+      toast.error(err.message || "Failed to delete student.")
       setIsLoading(false)
     }
   }
@@ -287,7 +288,7 @@ export default function StudentsManagementPage() {
     const input = document.getElementById("student-csv-input") as HTMLInputElement
     const file = input?.files?.[0]
     if (!file) {
-      alert("Please select a CSV file first.")
+      toast.warning("Please select a CSV file first.")
       return
     }
 
@@ -300,15 +301,15 @@ export default function StudentsManagementPage() {
       try {
         const res = await uploadStudentsCSV(text)
         if (res.success) {
-          alert(`Successfully uploaded ${res.count} students.`)
+          toast.success(`Successfully uploaded ${res.count} students.`)
           setIsUploadOpen(false)
           await loadStudents()
         } else {
-          alert("No valid students found in CSV.")
+          toast.warning("No valid students found in CSV.")
         }
       } catch (err: any) {
         console.error(err)
-        alert(err.message || "Failed to upload CSV.")
+        toast.error(err.message || "Failed to upload CSV.")
       } finally {
         setIsLoading(false)
       }

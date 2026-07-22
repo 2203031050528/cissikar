@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { toast } from "sonner"
 import { useRouter } from "next/navigation"
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -71,7 +72,7 @@ export default function UpcomingExamsPage() {
       router.push(`/student/exam?attemptId=${attempt.id}`)
     } catch (err: any) {
       console.error(err)
-      alert(err.message || "Failed to start exam attempt.")
+      toast.error(err.message || "Failed to start exam attempt.")
     } finally {
       setIsStartingExam(false)
     }

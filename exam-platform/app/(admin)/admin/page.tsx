@@ -305,7 +305,7 @@ export default function AdminDashboardPage() {
               </TableHeader>
               <TableBody>
                 {recentExams.map((exam: any) => (
-                  <TableRow key={exam.code} className="hover:bg-muted/30 transition-colors">
+                  <TableRow key={exam.id} className="hover:bg-muted/30 transition-colors">
                     <TableCell className="font-mono font-bold text-xs text-muted-foreground">{exam.code}</TableCell>
                     <TableCell className="font-medium text-xs">{exam.title}</TableCell>
                     <TableCell className="text-xs text-muted-foreground">{exam.duration}</TableCell>

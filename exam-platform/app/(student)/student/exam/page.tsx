@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { toast } from "sonner"
 import { useRouter } from "next/navigation"
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -102,7 +103,7 @@ export default function ExamScreenPage() {
         }
       } catch (err: any) {
         console.error(err)
-        alert(err.message || "Failed to load active exam attempt.")
+        toast.error(err.message || "Failed to load active exam attempt.")
         router.push("/student")
       } finally {
         setIsLoading(false)
@@ -255,7 +256,7 @@ export default function ExamScreenPage() {
     } catch (err: any) {
       console.error(err)
       setSaveStatus("saved")
-      alert(err.message || "Failed to save response. Check connection.")
+      toast.error(err.message || "Failed to save response. Check connection.")
     }
   }
 
@@ -287,7 +288,7 @@ export default function ExamScreenPage() {
     } catch (err: any) {
       console.error(err)
       setSaveStatus("saved")
-      alert(err.message || "Failed to clear response.")
+      toast.error(err.message || "Failed to clear response.")
     }
   }
 
@@ -344,11 +345,11 @@ export default function ExamScreenPage() {
     try {
       await submitAttempt(attemptId, false)
       setIsSubmitOpen(false)
-      alert("Exam submitted successfully!")
+      toast.success("Exam submitted successfully!")
       router.push("/student")
     } catch (err: any) {
       console.error(err)
-      alert(err.message || "Failed to submit exam attempt.")
+      toast.error(err.message || "Failed to submit exam attempt.")
     } finally {
       setIsSubmitting(false)
     }
@@ -358,7 +359,7 @@ export default function ExamScreenPage() {
     if (!attemptId) return
     try {
       await submitAttempt(attemptId, true)
-      alert("Time limit reached! Your responses were auto-submitted.")
+      toast.warning("Time limit reached! Your responses were auto-submitted.")
     } catch (err) {
       console.error("Auto submit failed:", err)
     } finally {
@@ -380,7 +381,7 @@ export default function ExamScreenPage() {
 
     try {
       await submitAttempt(attemptId, true)
-      alert("Exam auto-submitted due to 3 consecutive academic integrity violations (switching tabs or exiting full screen).")
+      toast.error("Exam auto-submitted due to 3 consecutive academic integrity violations (switching tabs or exiting full screen).")
     } catch (err) {
       console.error("Violation auto submit failed:", err)
     } finally {

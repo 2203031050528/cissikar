@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { toast } from "sonner"
 import Link from "next/link"
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -325,7 +326,7 @@ function DetailedResultView({
         }
       } catch (err: any) {
         console.error(err)
-        alert(err.message || "Failed to load results. Direct access is restricted.")
+        toast.error(err.message || "Failed to load results. Direct access is restricted.")
         router.push("/student/results")
       } finally {
         setIsLoading(false)

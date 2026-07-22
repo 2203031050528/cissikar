@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { toast } from "sonner"
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -140,7 +141,7 @@ export default function AdminResultsPage() {
         prev.map((e) => (e.id === examId ? { ...e, resultsPublished: !currentState } : e))
       )
     } catch (err: any) {
-      alert("Error: " + (err.message || "Failed to toggle publish status"))
+      toast.error(err.message || "Failed to toggle publish status")
     } finally {
       setTogglingId(null)
     }
@@ -159,7 +160,7 @@ export default function AdminResultsPage() {
       setReportData(data as ReportData)
     } catch (err: any) {
       console.error("Failed to load report:", err)
-      alert("Error: " + (err.message || "Failed to load report"))
+      toast.error(err.message || "Failed to load report")
       setReportOpen(false)
     } finally {
       setReportLoading(false)

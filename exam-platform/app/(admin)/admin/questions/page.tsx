@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { toast } from "sonner"
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -95,7 +96,7 @@ export default function QuestionBankPage() {
       setQuestions(data)
     } catch (err: any) {
       console.error(err)
-      alert(err.message || "Failed to load questions.")
+      toast.error(err.message || "Failed to load questions.")
     } finally {
       setIsLoading(false)
     }
@@ -181,7 +182,7 @@ export default function QuestionBankPage() {
       !formData.optionC || 
       !formData.optionD
     ) {
-      alert("Please fill in the question text and all four options.")
+      toast.warning("Please fill in the question text and all four options.")
       return
     }
 
@@ -203,7 +204,7 @@ export default function QuestionBankPage() {
       await loadQuestions()
     } catch (err: any) {
       console.error(err)
-      alert(err.message || "Failed to create question.")
+      toast.error(err.message || "Failed to create question.")
       setIsLoading(false)
     }
   }
@@ -238,7 +239,7 @@ export default function QuestionBankPage() {
       !formData.optionC || 
       !formData.optionD
     ) {
-      alert("Please fill in the question text and all four options.")
+      toast.warning("Please fill in the question text and all four options.")
       return
     }
 
@@ -260,7 +261,7 @@ export default function QuestionBankPage() {
       await loadQuestions()
     } catch (err: any) {
       console.error(err)
-      alert(err.message || "Failed to update question.")
+      toast.error(err.message || "Failed to update question.")
       setIsLoading(false)
     }
   }
@@ -282,7 +283,7 @@ export default function QuestionBankPage() {
       await loadQuestions()
     } catch (err: any) {
       console.error(err)
-      alert(err.message || "Failed to delete question.")
+      toast.error(err.message || "Failed to delete question.")
       setIsLoading(false)
     }
   }
@@ -293,7 +294,7 @@ export default function QuestionBankPage() {
     const input = document.getElementById("csv-input") as HTMLInputElement
     const file = input?.files?.[0]
     if (!file) {
-      alert("Please select a CSV file first.")
+      toast.warning("Please select a CSV file first.")
       return
     }
 
@@ -306,15 +307,15 @@ export default function QuestionBankPage() {
       try {
         const res = await uploadQuestionsCSV(text)
         if (res.success) {
-          alert(`Successfully uploaded ${res.count} questions.`)
+          toast.success(`Successfully uploaded ${res.count} questions.`)
           setIsUploadOpen(false)
           await loadQuestions()
         } else {
-          alert("No valid questions found in CSV.")
+          toast.warning("No valid questions found in CSV.")
         }
       } catch (err: any) {
         console.error(err)
-        alert(err.message || "Failed to upload CSV.")
+        toast.error(err.message || "Failed to upload CSV.")
       } finally {
         setIsLoading(false)
       }
