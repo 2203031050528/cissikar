@@ -22,16 +22,6 @@ import { getAdminMetrics } from "@/app/actions/exams"
 import { useRouter } from "next/navigation"
 import { Loader } from "@/components/ui/loader"
 
-const CHART_DATA = [
-  { month: "Jan", score: 72 },
-  { month: "Feb", score: 75 },
-  { month: "Mar", score: 74 },
-  { month: "Apr", score: 78 },
-  { month: "May", score: 81 },
-  { month: "Jun", score: 80 },
-  { month: "Jul", score: 83 },
-]
-
 export default function AdminDashboardPage() {
   const router = useRouter()
   const [data, setData] = React.useState<any>(null)
@@ -57,105 +47,117 @@ export default function AdminDashboardPage() {
       <div className="h-96 flex flex-col items-center justify-center gap-3">
         <Loader size="lg" />
         <span className="text-sm font-medium text-muted-foreground animate-pulse">
-          Retrieving admin dashboard metrics...
+          Loading command center analytics...
         </span>
       </div>
     )
   }
 
-  const { metrics, recentExams, recentStudents, recentResults } = data
+  const { metrics, recentExams, recentStudents, recentResults, performanceTrend = [], trendText = "+0% Trend", isPositiveTrend = true } = data
+
+  // Dynamic SVG Chart Coordinates calculation
+  const chartPoints = performanceTrend.map((item: any, i: number) => {
+    const totalItems = Math.max(1, performanceTrend.length - 1)
+    const x = 40 + i * (540 / totalItems)
+    const clampedScore = Math.min(100, Math.max(0, item.score || 0))
+    const y = 170 - (clampedScore / 100) * 150
+    return { x, y, month: item.month, score: item.score, count: item.count }
+  })
+
+  const linePathD = chartPoints.length > 0
+    ? `M ${chartPoints.map((p: any) => `${p.x} ${p.y}`).join(" L ")}`
+    : "M 40 170 L 580 170"
+
+  const areaPathD = chartPoints.length > 0
+    ? `M 40 170 L ${chartPoints.map((p: any) => `${p.x} ${p.y}`).join(" L ")} L 580 170 Z`
+    : "M 40 170 L 580 170 Z"
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 animate-fade-in">
       
-      {/* Dashboard Top Header */}
+      {/* Page Title & Controls */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="font-heading text-2xl font-bold tracking-tight text-foreground">Dashboard</h1>
-          <p className="text-sm text-muted-foreground">Comprehensive system metrics and activity insights for the Cissikar Exam Platform.</p>
+          <h1 className="font-heading text-2xl font-bold tracking-tight text-foreground">
+            Admin Dashboard
+          </h1>
+          <p className="text-sm text-muted-foreground">Real-time overview of examinations, student counts, and overall platform metrics.</p>
         </div>
-        <div className="flex gap-2">
-          <Button size="sm" variant="outline" className="cursor-pointer" onClick={() => window.print()}>
-            Print / Export
-          </Button>
-          <Button size="sm" className="cursor-pointer gap-2" onClick={() => router.push("/admin/exams")}>
+
+        <div className="flex items-center gap-3">
+          <Button 
+            size="sm" 
+            className="cursor-pointer gap-2"
+            onClick={() => router.push("/admin/exams")}
+          >
             <Plus className="size-4" />
-            <span>Create Exam</span>
+            <span>Create New Exam</span>
           </Button>
         </div>
       </div>
 
-      {/* KPI Cards Grid */}
+      {/* Primary KPI Metrics Grid */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         
-        {/* Students Card */}
+        {/* Total Students Card */}
         <Card className="border shadow-xs">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Registered Students</span>
-            <div className="p-2 rounded-lg text-blue-500 bg-blue-500/10">
+            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Total Registered Students</span>
+            <div className="p-2 rounded-lg text-primary bg-primary/10">
               <Users className="size-4" />
             </div>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold tracking-tight">{metrics.studentsTotal}</div>
-            <div className="flex items-center gap-1.5 mt-1.5">
-              <span className="text-[10px] text-emerald-500 font-semibold bg-emerald-500/10 px-1 py-0.5 rounded-sm">+100% active</span>
-              <span className="text-[10px] text-muted-foreground">({metrics.studentsActive} took exams)</span>
-            </div>
+            <p className="text-[10px] text-muted-foreground mt-1">{metrics.studentsActive} Active Test Takers</p>
           </CardContent>
         </Card>
 
-        {/* Questions Card */}
+        {/* Question Bank Pool Card */}
         <Card className="border shadow-xs">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Question Pool Bank</span>
+            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Question Bank Items</span>
             <div className="p-2 rounded-lg text-amber-500 bg-amber-500/10">
               <FileQuestion className="size-4" />
             </div>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold tracking-tight">{metrics.questionsTotal}</div>
-            <div className="flex items-center gap-1.5 mt-1.5">
-              <span className="text-[10px] text-amber-500 font-semibold bg-amber-500/10 px-1 py-0.5 rounded-sm">Verified</span>
-              <span className="text-[10px] text-muted-foreground">({metrics.questionsTotal} active)</span>
-            </div>
+            <p className="text-[10px] text-muted-foreground mt-1">Verified & Tagged Questions</p>
           </CardContent>
         </Card>
 
-        {/* Exams Card */}
+        {/* Total Examinations Card */}
         <Card className="border shadow-xs">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Created Assessments</span>
-            <div className="p-2 rounded-lg text-emerald-500 bg-emerald-500/10">
+            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Total Exams Built</span>
+            <div className="p-2 rounded-lg text-blue-500 bg-blue-500/10">
               <GraduationCap className="size-4" />
             </div>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold tracking-tight">{metrics.examsTotal}</div>
-            <div className="flex items-center gap-1.5 mt-1.5">
-              <span className="text-[10px] text-emerald-500 font-semibold bg-emerald-500/10 px-1 py-0.5 rounded-sm">{metrics.examsActive}</span>
-            </div>
+            <p className="text-[10px] text-muted-foreground mt-1">{metrics.examsActive}</p>
           </CardContent>
         </Card>
 
-        {/* Results Card */}
+        {/* Average Performance Card */}
         <Card className="border shadow-xs">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Average Performance</span>
-            <div className="p-2 rounded-lg text-purple-500 bg-purple-500/10">
+            <div className="p-2 rounded-lg text-emerald-500 bg-emerald-500/10">
               <Award className="size-4" />
             </div>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold tracking-tight">{metrics.averagePerformance}</div>
-            <div className="flex items-center gap-1.5 mt-1.5">
-              <span className="text-[10px] text-purple-500 font-semibold bg-purple-500/10 px-1 py-0.5 rounded-sm">{metrics.passRate} pass rate</span>
-            </div>
+            <p className="text-[10px] text-muted-foreground mt-1">Overall Pass Rate: {metrics.passRate}</p>
           </CardContent>
         </Card>
+
       </div>
 
-      {/* Charts & Main Section */}
+      {/* Main Content Grid: Performance Chart & Recent Activity */}
       <div className="grid gap-6 lg:grid-cols-3">
         
         {/* Performance Chart Component */}
@@ -164,11 +166,13 @@ export default function AdminDashboardPage() {
             <div className="flex items-center justify-between">
               <div>
                 <CardTitle className="text-base font-bold">Performance Chart</CardTitle>
-                <CardDescription className="text-xs">Average examination score trend over the past 7 months.</CardDescription>
+                <CardDescription className="text-xs">Average examination score trend over the past 7 months (Real Data).</CardDescription>
               </div>
-              <div className="flex items-center gap-1 text-xs font-medium text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded-md">
-                <TrendingUp className="size-3.5" />
-                <span>+15.2% Trend</span>
+              <div className={`flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-md ${
+                isPositiveTrend ? "text-emerald-500 bg-emerald-500/10" : "text-destructive bg-destructive/10"
+              }`}>
+                <TrendingUp className={`size-3.5 ${!isPositiveTrend ? "rotate-180" : ""}`} />
+                <span>{trendText}</span>
               </div>
             </div>
           </CardHeader>
@@ -186,25 +190,27 @@ export default function AdminDashboardPage() {
 
                 {/* Y-Axis Guidelines */}
                 <line x1="40" y1="20" x2="580" y2="20" stroke="var(--border)" strokeWidth="1" strokeDasharray="4 4" />
-                <line x1="40" y1="70" x2="580" y2="70" stroke="var(--border)" strokeWidth="1" strokeDasharray="4 4" />
-                <line x1="40" y1="120" x2="580" y2="120" stroke="var(--border)" strokeWidth="1" strokeDasharray="4 4" />
+                <line x1="40" y1="57.5" x2="580" y2="57.5" stroke="var(--border)" strokeWidth="1" strokeDasharray="4 4" />
+                <line x1="40" y1="95" x2="580" y2="95" stroke="var(--border)" strokeWidth="1" strokeDasharray="4 4" />
+                <line x1="40" y1="132.5" x2="580" y2="132.5" stroke="var(--border)" strokeWidth="1" strokeDasharray="4 4" />
                 <line x1="40" y1="170" x2="580" y2="170" stroke="var(--border)" strokeWidth="1" />
 
                 {/* Y-Axis Labels */}
-                <text x="15" y="24" fill="var(--muted-foreground)" fontSize="10" fontWeight="500">100%</text>
-                <text x="15" y="74" fill="var(--muted-foreground)" fontSize="10" fontWeight="500">80%</text>
-                <text x="15" y="124" fill="var(--muted-foreground)" fontSize="10" fontWeight="500">60%</text>
-                <text x="15" y="174" fill="var(--muted-foreground)" fontSize="10" fontWeight="500">40%</text>
+                <text x="10" y="24" fill="var(--muted-foreground)" fontSize="10" fontWeight="500">100%</text>
+                <text x="15" y="61.5" fill="var(--muted-foreground)" fontSize="10" fontWeight="500">75%</text>
+                <text x="15" y="99" fill="var(--muted-foreground)" fontSize="10" fontWeight="500">50%</text>
+                <text x="15" y="136.5" fill="var(--muted-foreground)" fontSize="10" fontWeight="500">25%</text>
+                <text x="20" y="174" fill="var(--muted-foreground)" fontSize="10" fontWeight="500">0%</text>
 
                 {/* Area under the line */}
                 <path
-                  d="M 40 170 L 40 110 L 130 99 L 220 102 L 310 88 L 400 78 L 490 81 L 580 72 L 580 170 Z"
+                  d={areaPathD}
                   fill="url(#areaGradient)"
                 />
 
                 {/* Line Path */}
                 <path
-                  d="M 40 110 L 130 99 L 220 102 L 310 88 L 400 78 L 490 81 L 580 72"
+                  d={linePathD}
                   fill="none"
                   stroke="var(--primary)"
                   strokeWidth="2.5"
@@ -212,18 +218,33 @@ export default function AdminDashboardPage() {
                 />
 
                 {/* Data Nodes */}
-                <circle cx="40" cy="110" r="4.5" fill="var(--background)" stroke="var(--primary)" strokeWidth="2.5" />
-                <circle cx="130" cy="99" r="4.5" fill="var(--background)" stroke="var(--primary)" strokeWidth="2.5" />
-                <circle cx="220" cy="102" r="4.5" fill="var(--background)" stroke="var(--primary)" strokeWidth="2.5" />
-                <circle cx="310" cy="88" r="4.5" fill="var(--background)" stroke="var(--primary)" strokeWidth="2.5" />
-                <circle cx="400" cy="78" r="4.5" fill="var(--background)" stroke="var(--primary)" strokeWidth="2.5" />
-                <circle cx="490" cy="81" r="4.5" fill="var(--background)" stroke="var(--primary)" strokeWidth="2.5" />
-                <circle cx="580" cy="72" r="4.5" fill="var(--background)" stroke="var(--primary)" strokeWidth="2.5" />
+                {chartPoints.map((p: any, idx: number) => (
+                  <g key={idx}>
+                    <circle 
+                      cx={p.x} 
+                      cy={p.y} 
+                      r="4.5" 
+                      fill="var(--background)" 
+                      stroke="var(--primary)" 
+                      strokeWidth="2.5" 
+                    />
+                    <text 
+                      x={p.x} 
+                      y={p.y - 8} 
+                      textAnchor="middle" 
+                      fill="var(--foreground)" 
+                      fontSize="9" 
+                      fontWeight="700"
+                    >
+                      {p.score}%
+                    </text>
+                  </g>
+                ))}
               </svg>
 
               {/* X-Axis Labels */}
               <div className="absolute left-[40px] right-0 bottom-0 flex justify-between px-1 text-[10px] text-muted-foreground font-semibold">
-                {CHART_DATA.map((d: any, index: number) => (
+                {chartPoints.map((d: any, index: number) => (
                   <span key={index}>{d.month}</span>
                 ))}
               </div>

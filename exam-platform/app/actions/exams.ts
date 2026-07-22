@@ -728,7 +728,7 @@ export async function getAdminMetrics() {
   // 4. Average score and pass rate (Pass defined as >= 50% score)
   const { data: submittedAttempts } = await supabaseAdmin
     .from("attempts")
-    .select("id, total_score, question_order")
+    .select("id, total_score, question_order, submitted_at, started_at")
     .neq("status", "in_progress")
 
   let totalPercentage = 0
@@ -760,7 +760,75 @@ export async function getAdminMetrics() {
   const averagePercentage = gradedCount > 0 ? Math.round(totalPercentage / gradedCount) : 0
   const passRate = gradedCount > 0 ? Math.round((passedCount / gradedCount) * 100) : 0
 
-  // 5. Recent Exams, Students, Results lists
+  // 5. Real Monthly Performance Trend over the past 7 months
+  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+  const currentDate = new Date()
+  const monthsList: { year: number; monthIdx: number; label: string; scores: number[] }[] = []
+
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(currentDate.getFullYear(), currentDate.getMonth() - i, 1)
+    monthsList.push({
+      year: d.getFullYear(),
+      monthIdx: d.getMonth(),
+      label: monthNames[d.getMonth()],
+      scores: [],
+    })
+  }
+
+  for (const att of submittedAttempts || []) {
+    if (att.total_score === null) continue
+    const dateObj = new Date(att.submitted_at || att.started_at || Date.now())
+    const attYear = dateObj.getFullYear()
+    const attMonthIdx = dateObj.getMonth()
+
+    const targetMonth = monthsList.find((m) => m.year === attYear && m.monthIdx === attMonthIdx)
+    if (targetMonth) {
+      const questionIds = att.question_order
+      let maxMarks = 0
+      if (questionIds && questionIds.length > 0) {
+        const { data: qData } = await supabaseAdmin
+          .from("questions")
+          .select("marks")
+          .in("id", questionIds)
+        maxMarks = qData?.reduce((sum, q) => sum + Number(q.marks), 0) || 0
+      }
+      if (maxMarks > 0) {
+        const pct = Math.round((Number(att.total_score) / maxMarks) * 100)
+        targetMonth.scores.push(pct)
+      }
+    }
+  }
+
+  const performanceTrend = monthsList.map((m) => {
+    let avg = 0
+    if (m.scores.length > 0) {
+      avg = Math.round(m.scores.reduce((a, b) => a + b, 0) / m.scores.length)
+    } else {
+      avg = 0
+    }
+    return {
+      month: m.label,
+      score: avg,
+      count: m.scores.length,
+    }
+  })
+
+  const monthsWithData = performanceTrend.filter((m) => m.count > 0)
+  let trendText = "+0% Trend"
+  let isPositiveTrend = true
+
+  if (monthsWithData.length >= 2) {
+    const prevScore = monthsWithData[monthsWithData.length - 2].score
+    const currScore = monthsWithData[monthsWithData.length - 1].score
+    const diff = currScore - prevScore
+    trendText = diff >= 0 ? `+${diff}% Trend` : `${diff}% Trend`
+    isPositiveTrend = diff >= 0
+  } else if (monthsWithData.length === 1) {
+    trendText = `+${monthsWithData[0].score}% Avg`
+    isPositiveTrend = true
+  }
+
+  // 6. Recent Exams, Students, Results lists
   const { data: recentExamsData } = await supabaseAdmin
     .from("exams")
     .select("*")
@@ -821,6 +889,9 @@ export async function getAdminMetrics() {
       averagePerformance: `${averagePercentage}%`,
       passRate: `${passRate}%`,
     },
+    performanceTrend,
+    trendText,
+    isPositiveTrend,
     recentExams: (recentExamsData || []).map((e) => ({
       id: e.id,
       code: e.title.split(" ")[0] || "EXAM",
