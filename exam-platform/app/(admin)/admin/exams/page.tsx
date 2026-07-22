@@ -507,18 +507,13 @@ export default function ExamBuilderPage() {
               filteredQuestions.map((q) => {
                 const isChecked = selectedQuestions.includes(q.id)
                 return (
-                  <label
+                  <div
                     key={q.id}
+                    onClick={() => handleToggleQuestion(q.id)}
                     className="flex items-start gap-4 p-4 hover:bg-muted/30 transition-colors cursor-pointer select-none"
                   >
                     {/* Custom Styled Checkbox */}
                     <div className="pt-0.5">
-                      <input
-                        type="checkbox"
-                        checked={isChecked}
-                        onChange={() => handleToggleQuestion(q.id)}
-                        className="sr-only"
-                      />
                       <div className={`size-4.5 rounded border flex items-center justify-center transition-all ${
                         isChecked 
                           ? "bg-primary border-primary text-primary-foreground" 
@@ -543,7 +538,7 @@ export default function ExamBuilderPage() {
                     <span className="text-xs font-bold text-muted-foreground whitespace-nowrap pt-1">
                       {q.marks} pts
                     </span>
-                  </label>
+                  </div>
                 )
               })
             )}
