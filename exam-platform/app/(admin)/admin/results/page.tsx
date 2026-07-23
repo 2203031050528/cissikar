@@ -67,6 +67,7 @@ interface AttemptRow {
   startedAt: string
   submittedAt: string
   score: number
+  maxMarks?: number
   percentage: number
   passed: boolean
   status: string
@@ -718,7 +719,7 @@ export default function AdminResultsPage() {
                             {att.classSection}
                           </TableCell>
                           <TableCell className="text-center text-xs font-semibold">
-                            {att.score} / {reportData.exam.maxMarks}
+                            {att.score} / {att.maxMarks || reportData.exam.maxMarks}
                           </TableCell>
                           <TableCell className="text-center">
                             <span

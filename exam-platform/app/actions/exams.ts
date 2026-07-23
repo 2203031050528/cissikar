@@ -55,7 +55,11 @@ export async function getExamsAdmin() {
 
   return (examsRes.data || []).map((exam) => {
     const questionIds = examQuestionsMap.get(exam.id) || []
-    const totalMarks = questionIds.reduce((sum, qId) => sum + (questionMarksMap.get(qId) || 0), 0)
+    const servedCount = exam.num_questions_to_serve && exam.num_questions_to_serve > 0
+      ? Math.min(exam.num_questions_to_serve, questionIds.length)
+      : questionIds.length
+    const servedQuestionIds = questionIds.slice(0, servedCount > 0 ? servedCount : questionIds.length)
+    const totalMarks = servedQuestionIds.reduce((sum, qId) => sum + (questionMarksMap.get(qId) || 0), 0)
 
     return {
       id: exam.id,
@@ -64,7 +68,7 @@ export async function getExamsAdmin() {
       duration: String(exam.duration_minutes),
       startTime: exam.start_time,
       endTime: exam.end_time,
-      questionsCount: questionIds.length,
+      questionsCount: servedCount > 0 ? servedCount : questionIds.length,
       totalMarks: totalMarks,
       status: getExamStatus(exam.start_time, exam.end_time),
       randomizeQuestions: exam.randomize_questions,
@@ -1017,12 +1021,12 @@ export async function togglePublishResults(examId: string, publish: boolean) {
 export async function getExamAttemptsReport(examId: string) {
   await verifyAdmin()
 
-  // Execute all 4 queries in parallel batch
+  // Execute all top-level queries in parallel batch
   const [examRes, eqRes, attRes, questionsRes] = await Promise.all([
     supabaseAdmin.from("exams").select("*").eq("id", examId).single(),
     supabaseAdmin.from("exam_questions").select("question_id").eq("exam_id", examId),
     supabaseAdmin.from("attempts").select("*, users(full_name, roll_number, class_section)").eq("exam_id", examId).neq("status", "in_progress"),
-    supabaseAdmin.from("questions").select("id, marks"),
+    supabaseAdmin.from("questions").select("id, correct_option, marks"),
   ])
 
   if (examRes.error) throw new Error(examRes.error.message)
@@ -1030,13 +1034,65 @@ export async function getExamAttemptsReport(examId: string) {
   if (attRes.error) throw new Error(attRes.error.message)
 
   const exam = examRes.data
-  const questionMarksMap = new Map((questionsRes.data || []).map((q) => [q.id, Number(q.marks)]))
-  const questionIds = (eqRes.data || []).map((x) => x.question_id)
-  const maxMarks = questionIds.reduce((sum, qId) => sum + (questionMarksMap.get(qId) || 0), 0)
+  const allQuestionsMap = new Map((questionsRes.data || []).map((q) => [q.id, q]))
+  const poolQuestionIds = (eqRes.data || []).map((x) => x.question_id)
+  
+  const servedCount = exam.num_questions_to_serve && exam.num_questions_to_serve > 0
+    ? Math.min(exam.num_questions_to_serve, poolQuestionIds.length)
+    : poolQuestionIds.length
 
-  const takers = (attRes.data || []).map((att) => {
-    const scoreVal = Number(att.total_score) || 0
-    const pct = maxMarks > 0 ? Math.round((scoreVal / maxMarks) * 100) : 0
+  const defaultServedQuestionIds = poolQuestionIds.slice(0, servedCount > 0 ? servedCount : poolQuestionIds.length)
+  const defaultMaxMarks = defaultServedQuestionIds.reduce((sum, qId) => sum + Number(allQuestionsMap.get(qId)?.marks || 1), 0) || 1
+
+  const attempts = attRes.data || []
+
+  // Identify attempts that lack computed total_score
+  const missingScoreAttemptIds = attempts.filter((a) => a.total_score === null).map((a) => a.id)
+  const computedScoresMap = new Map<string, number>()
+
+  if (missingScoreAttemptIds.length > 0) {
+    const { data: responsesData } = await supabaseAdmin
+      .from("responses")
+      .select("attempt_id, question_id, selected_option")
+      .in("attempt_id", missingScoreAttemptIds)
+
+    const responsesByAttempt = new Map<string, Map<string, string>>()
+    for (const r of (responsesData || [])) {
+      if (!responsesByAttempt.has(r.attempt_id)) {
+        responsesByAttempt.set(r.attempt_id, new Map())
+      }
+      responsesByAttempt.get(r.attempt_id)!.set(r.question_id, r.selected_option)
+    }
+
+    for (const att of attempts) {
+      if (att.total_score !== null) continue
+      const qIds: string[] = (att.question_order && att.question_order.length > 0)
+        ? att.question_order
+        : defaultServedQuestionIds
+
+      const userResp = responsesByAttempt.get(att.id) || new Map()
+      let score = 0
+      for (const qId of qIds) {
+        const q = allQuestionsMap.get(qId)
+        if (q && userResp.get(qId) === q.correct_option) {
+          score += Number(q.marks || 1)
+        }
+      }
+      computedScoresMap.set(att.id, score)
+
+      // Backfill total_score in database
+      await supabaseAdmin.from("attempts").update({ total_score: score }).eq("id", att.id)
+    }
+  }
+
+  const takers = attempts.map((att) => {
+    const scoreVal = att.total_score !== null ? Number(att.total_score) : (computedScoresMap.get(att.id) ?? 0)
+    const qIds: string[] = (att.question_order && att.question_order.length > 0)
+      ? att.question_order
+      : defaultServedQuestionIds
+
+    const attMaxMarks = qIds.reduce((sum, qId) => sum + Number(allQuestionsMap.get(qId)?.marks || 1), 0) || defaultMaxMarks
+    const pct = attMaxMarks > 0 ? Math.round((scoreVal / attMaxMarks) * 100) : 0
     const passed = pct >= 50
 
     return {
@@ -1047,13 +1103,14 @@ export async function getExamAttemptsReport(examId: string) {
       startedAt: att.started_at,
       submittedAt: att.submitted_at || att.started_at,
       score: scoreVal,
+      maxMarks: attMaxMarks,
       percentage: pct,
       passed,
       status: att.status,
     }
   })
 
-  // 4. Compute overall metrics
+  // Compute overall metrics
   const totalAttempts = takers.length
   let avgPercentage = 0
   let highestPercentage = 0
@@ -1082,7 +1139,7 @@ export async function getExamAttemptsReport(examId: string) {
       endTime: exam.end_time,
       classSection: exam.class_section,
       resultsPublished: exam.results_published || false,
-      maxMarks,
+      maxMarks: defaultMaxMarks,
     },
     metrics: {
       totalAttempts,
