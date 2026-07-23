@@ -82,6 +82,8 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
       .slice(0, 2)
   }
 
+  const isExamPage = pathname === "/student/exam" || pathname?.startsWith("/student/exam")
+
   if (isLoading || status === "loading") {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-background gap-4">
@@ -91,6 +93,10 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
         </span>
       </div>
     )
+  }
+
+  if (isExamPage) {
+    return <>{children}</>
   }
 
   return (

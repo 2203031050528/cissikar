@@ -22,42 +22,42 @@ async function verifyAdmin() {
 export async function getExamsAdmin() {
   await verifyAdmin()
 
-  // We need to fetch exams, count of questions, and total marks of those questions.
-  // We can query exams, then exam_questions, then questions.
-  const { data: exams, error: examsError } = await supabaseAdmin
-    .from("exams")
-    .select("*")
-    .order("created_at", { ascending: false })
+  // Execute queries in parallel batch
+  const [examsRes, eqRes] = await Promise.all([
+    supabaseAdmin.from("exams").select("*").order("created_at", { ascending: false }),
+    supabaseAdmin.from("exam_questions").select("exam_id, question_id"),
+  ])
 
-  if (examsError) {
-    console.error("Error fetching exams:", examsError)
-    throw new Error(examsError.message)
+  if (examsRes.error) {
+    console.error("Error fetching exams:", examsRes.error)
+    throw new Error(examsRes.error.message)
   }
 
-  const results = []
+  const allEqData = eqRes.data || []
+  const allQuestionIds = Array.from(new Set(allEqData.map((eq) => eq.question_id)))
 
-  for (const exam of exams) {
-    const { data: eqData, error: eqError } = await supabaseAdmin
-      .from("exam_questions")
-      .select("question_id")
-      .eq("exam_id", exam.id)
+  let questionMarksMap = new Map<string, number>()
+  if (allQuestionIds.length > 0) {
+    const { data: qData } = await supabaseAdmin
+      .from("questions")
+      .select("id, marks")
+      .in("id", allQuestionIds)
+    questionMarksMap = new Map((qData || []).map((q) => [q.id, Number(q.marks)]))
+  }
 
-    if (eqError) throw new Error(eqError.message)
-
-    const questionIds = eqData.map((x) => x.question_id)
-    let totalMarks = 0
-
-    if (questionIds.length > 0) {
-      const { data: qData, error: qError } = await supabaseAdmin
-        .from("questions")
-        .select("marks")
-        .in("id", questionIds)
-
-      if (qError) throw new Error(qError.message)
-      totalMarks = qData.reduce((sum, q) => sum + Number(q.marks), 0)
+  const examQuestionsMap = new Map<string, string[]>()
+  for (const eq of allEqData) {
+    if (!examQuestionsMap.has(eq.exam_id)) {
+      examQuestionsMap.set(eq.exam_id, [])
     }
+    examQuestionsMap.get(eq.exam_id)!.push(eq.question_id)
+  }
 
-    results.push({
+  return (examsRes.data || []).map((exam) => {
+    const questionIds = examQuestionsMap.get(exam.id) || []
+    const totalMarks = questionIds.reduce((sum, qId) => sum + (questionMarksMap.get(qId) || 0), 0)
+
+    return {
       id: exam.id,
       name: exam.title,
       classTarget: exam.class_section || "All",
@@ -70,10 +70,8 @@ export async function getExamsAdmin() {
       randomizeQuestions: exam.randomize_questions,
       numQuestionsToServe: exam.num_questions_to_serve,
       resultsPublished: exam.results_published || false,
-    })
-  }
-
-  return results
+    }
+  })
 }
 
 function getExamStatus(startTime: string, endTime: string): string {
@@ -538,7 +536,7 @@ export async function submitAttempt(attemptId: string, isAutoSubmit = false) {
 
   const { data: attempt, error: aError } = await supabaseAdmin
     .from("attempts")
-    .select("status, student_id")
+    .select("status, student_id, exam_id, question_order")
     .eq("id", attemptId)
     .single()
 
@@ -551,11 +549,42 @@ export async function submitAttempt(attemptId: string, isAutoSubmit = false) {
     return { success: true, alreadySubmitted: true }
   }
 
+  // Calculate total score for this attempt
+  let questionIds: string[] = attempt.question_order || []
+  if (questionIds.length === 0 && attempt.exam_id) {
+    const { data: eqData } = await supabaseAdmin
+      .from("exam_questions")
+      .select("question_id")
+      .eq("exam_id", attempt.exam_id)
+    questionIds = (eqData || []).map((x) => x.question_id)
+  }
+
+  let computedScore = 0
+  if (questionIds.length > 0) {
+    const [qRes, rRes] = await Promise.all([
+      supabaseAdmin.from("questions").select("id, correct_option, marks").in("id", questionIds),
+      supabaseAdmin.from("responses").select("question_id, selected_option").eq("attempt_id", attemptId),
+    ])
+
+    const questionsMap = new Map((qRes.data || []).map((q) => [q.id, q]))
+    const responsesMap = new Map((rRes.data || []).map((r) => [r.question_id, r.selected_option]))
+
+    for (const qId of questionIds) {
+      const q = questionsMap.get(qId)
+      if (!q) continue
+      const selected = responsesMap.get(qId)
+      if (selected && selected === q.correct_option) {
+        computedScore += Number(q.marks || 1)
+      }
+    }
+  }
+
   const { data, error } = await supabaseAdmin
     .from("attempts")
     .update({
       status: isAutoSubmit ? "auto_submitted" : "submitted",
       submitted_at: new Date().toISOString(),
+      total_score: computedScore,
     })
     .eq("id", attemptId)
     .select()
@@ -695,72 +724,138 @@ export async function getAttemptResults(attemptId: string) {
 export async function getAdminMetrics() {
   await verifyAdmin()
 
-  // 1. Total & Active Students (Active defined as has taken an exam, or just active role)
-  const { count: totalStudents } = await supabaseAdmin
-    .from("users")
-    .select("*", { count: "exact", head: true })
-    .eq("role", "student")
+  // Execute all top-level queries in parallel using Promise.all
+  const [
+    studentsRes,
+    attemptsRes,
+    questionsRes,
+    examsRes,
+    submittedRes,
+    recentExamsRes,
+    recentStudentsRes,
+    recentAttemptsRes,
+    allExamQuestionsRes,
+  ] = await Promise.all([
+    supabaseAdmin.from("users").select("id", { count: "exact" }).eq("role", "student"),
+    supabaseAdmin.from("attempts").select("exam_id, student_id"),
+    supabaseAdmin.from("questions").select("id", { count: "exact" }),
+    supabaseAdmin.from("exams").select("id, start_time, end_time"),
+    supabaseAdmin.from("attempts").select("id, exam_id, total_score, question_order, submitted_at, started_at").neq("status", "in_progress"),
+    supabaseAdmin.from("exams").select("*").order("created_at", { ascending: false }).limit(4),
+    supabaseAdmin.from("users").select("roll_number, full_name, email, created_at").eq("role", "student").order("created_at", { ascending: false }).limit(4),
+    supabaseAdmin.from("attempts").select("*, users(full_name), exams(title)").neq("status", "in_progress").order("submitted_at", { ascending: false }).limit(4),
+    supabaseAdmin.from("exam_questions").select("exam_id, question_id"),
+  ])
 
-  // Active students: distinct students in attempts
-  const { data: attemptsData } = await supabaseAdmin
-    .from("attempts")
-    .select("student_id")
-
-  const activeStudentIds = new Set(attemptsData?.map((a) => a.student_id))
+  const totalStudents = studentsRes.count || 0
+  const activeStudentIds = new Set(attemptsRes.data?.map((a) => a.student_id).filter(Boolean))
   const activeStudents = activeStudentIds.size
+  const totalQuestions = questionsRes.count || 0
 
-  // 2. Total & Verified Questions
-  const { count: totalQuestions } = await supabaseAdmin
-    .from("questions")
-    .select("*", { count: "exact", head: true })
+  // Calculate takers count per exam
+  const examTakersMap = new Map<string, number>()
+  attemptsRes.data?.forEach((a) => {
+    if (a.exam_id) {
+      examTakersMap.set(a.exam_id, (examTakersMap.get(a.exam_id) || 0) + 1)
+    }
+  })
 
-  // 3. Exams total and live now
-  const { data: exams } = await supabaseAdmin
-    .from("exams")
-    .select("id, start_time, end_time")
-
-  const totalExams = exams?.length || 0
+  const exams = examsRes.data || []
+  const totalExams = exams.length
   const now = new Date()
-  const liveExams = exams?.filter((e) => {
-    return now >= new Date(e.start_time) && now <= new Date(e.end_time)
-  }).length || 0
+  const liveExams = exams.filter((e) => now >= new Date(e.start_time) && now <= new Date(e.end_time)).length
 
-  // 4. Average score and pass rate (Pass defined as >= 50% score)
-  const { data: submittedAttempts } = await supabaseAdmin
-    .from("attempts")
-    .select("id, total_score, question_order, submitted_at, started_at")
-    .neq("status", "in_progress")
+  const submittedAttempts = submittedRes.data || []
+  const recentAttempts = recentAttemptsRes.data || []
+
+  // Map exam_id -> question_ids from exam_questions
+  const examQuestionsMap = new Map<string, string[]>()
+  for (const eq of (allExamQuestionsRes.data || [])) {
+    if (!examQuestionsMap.has(eq.exam_id)) {
+      examQuestionsMap.set(eq.exam_id, [])
+    }
+    examQuestionsMap.get(eq.exam_id)!.push(eq.question_id)
+  }
+
+  // Helper to get assigned question IDs for an attempt
+  const getAttemptQuestionIds = (att: { question_order?: string[] | null; exam_id?: string | null }): string[] => {
+    if (att.question_order && att.question_order.length > 0) {
+      return att.question_order
+    }
+    if (att.exam_id && examQuestionsMap.has(att.exam_id)) {
+      return examQuestionsMap.get(att.exam_id)!
+    }
+    return []
+  }
+
+  // Collect ALL question IDs needed across submitted & recent attempts
+  const allNeededQuestionIds = Array.from(new Set([
+    ...submittedAttempts.flatMap((a) => getAttemptQuestionIds(a)),
+    ...recentAttempts.flatMap((a) => getAttemptQuestionIds(a)),
+  ]))
+
+  // Fetch targeted questions with marks
+  let questionMarksMap = new Map<string, number>()
+  if (allNeededQuestionIds.length > 0) {
+    const { data: qData } = await supabaseAdmin
+      .from("questions")
+      .select("id, marks")
+      .in("id", allNeededQuestionIds)
+
+    questionMarksMap = new Map((qData || []).map((q) => [q.id, Number(q.marks)]))
+  }
+
+  // Compute scores for attempts missing total_score
+  const attemptsMissingScore = [
+    ...submittedAttempts.filter((a) => a.total_score === null),
+    ...recentAttempts.filter((a) => a.total_score === null),
+  ]
+  const uniqueMissingAttemptIds = Array.from(new Set(attemptsMissingScore.map((a) => a.id)))
+
+  const computedScoresMap = new Map<string, number>()
+
+  if (uniqueMissingAttemptIds.length > 0) {
+    const [responsesRes, questionsForScoreRes] = await Promise.all([
+      supabaseAdmin.from("responses").select("attempt_id, question_id, selected_option").in("attempt_id", uniqueMissingAttemptIds),
+      supabaseAdmin.from("questions").select("id, correct_option, marks").in("id", allNeededQuestionIds),
+    ])
+
+    const questionsDict = new Map((questionsForScoreRes.data || []).map((q) => [q.id, q]))
+    const responsesByAttempt = new Map<string, { question_id: string; selected_option: string }[]>()
+
+    for (const r of (responsesRes.data || [])) {
+      if (!responsesByAttempt.has(r.attempt_id)) {
+        responsesByAttempt.set(r.attempt_id, [])
+      }
+      responsesByAttempt.get(r.attempt_id)!.push(r)
+    }
+
+    const allAttemptsToScore = [...submittedAttempts, ...recentAttempts].filter((a) => uniqueMissingAttemptIds.includes(a.id))
+    
+    for (const att of allAttemptsToScore) {
+      if (computedScoresMap.has(att.id)) continue
+      const qIds = getAttemptQuestionIds(att)
+      const userResp = responsesByAttempt.get(att.id) || []
+      const respMap = new Map(userResp.map((r) => [r.question_id, r.selected_option]))
+
+      let score = 0
+      for (const qId of qIds) {
+        const q = questionsDict.get(qId)
+        if (q && respMap.get(qId) === q.correct_option) {
+          score += Number(q.marks || 1)
+        }
+      }
+      computedScoresMap.set(att.id, score)
+
+      // Backfill score in DB
+      await supabaseAdmin.from("attempts").update({ total_score: score }).eq("id", att.id)
+    }
+  }
 
   let totalPercentage = 0
   let passedCount = 0
   let gradedCount = 0
 
-  for (const att of submittedAttempts || []) {
-    if (att.total_score === null) continue
-
-    // Get exam max marks
-    const questionIds = att.question_order
-    let maxMarks = 0
-    if (questionIds && questionIds.length > 0) {
-      const { data: qData } = await supabaseAdmin
-        .from("questions")
-        .select("marks")
-        .in("id", questionIds)
-      maxMarks = qData?.reduce((sum, q) => sum + Number(q.marks), 0) || 0
-    }
-
-    if (maxMarks > 0) {
-      const percentage = (Number(att.total_score) / maxMarks) * 100
-      totalPercentage += percentage
-      if (percentage >= 50) passedCount++
-      gradedCount++
-    }
-  }
-
-  const averagePercentage = gradedCount > 0 ? Math.round(totalPercentage / gradedCount) : 0
-  const passRate = gradedCount > 0 ? Math.round((passedCount / gradedCount) * 100) : 0
-
-  // 5. Real Monthly Performance Trend over the past 7 months
   const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
   const currentDate = new Date()
   const monthsList: { year: number; monthIdx: number; label: string; scores: number[] }[] = []
@@ -775,43 +870,33 @@ export async function getAdminMetrics() {
     })
   }
 
-  for (const att of submittedAttempts || []) {
-    if (att.total_score === null) continue
-    const dateObj = new Date(att.submitted_at || att.started_at || Date.now())
-    const attYear = dateObj.getFullYear()
-    const attMonthIdx = dateObj.getMonth()
+  for (const att of submittedAttempts) {
+    const scoreVal = att.total_score !== null ? Number(att.total_score) : (computedScoresMap.get(att.id) ?? 0)
+    const questionIds = getAttemptQuestionIds(att)
+    const maxMarks = questionIds.reduce((sum, qId) => sum + (questionMarksMap.get(qId) || 0), 0)
 
-    const targetMonth = monthsList.find((m) => m.year === attYear && m.monthIdx === attMonthIdx)
-    if (targetMonth) {
-      const questionIds = att.question_order
-      let maxMarks = 0
-      if (questionIds && questionIds.length > 0) {
-        const { data: qData } = await supabaseAdmin
-          .from("questions")
-          .select("marks")
-          .in("id", questionIds)
-        maxMarks = qData?.reduce((sum, q) => sum + Number(q.marks), 0) || 0
-      }
-      if (maxMarks > 0) {
-        const pct = Math.round((Number(att.total_score) / maxMarks) * 100)
-        targetMonth.scores.push(pct)
+    if (maxMarks > 0) {
+      const percentage = (scoreVal / maxMarks) * 100
+      totalPercentage += percentage
+      if (percentage >= 50) passedCount++
+      gradedCount++
+
+      const dateObj = new Date(att.submitted_at || att.started_at || Date.now())
+      const targetMonth = monthsList.find((m) => m.year === dateObj.getFullYear() && m.monthIdx === dateObj.getMonth())
+      if (targetMonth) {
+        targetMonth.scores.push(Math.round(percentage))
       }
     }
   }
 
-  const performanceTrend = monthsList.map((m) => {
-    let avg = 0
-    if (m.scores.length > 0) {
-      avg = Math.round(m.scores.reduce((a, b) => a + b, 0) / m.scores.length)
-    } else {
-      avg = 0
-    }
-    return {
-      month: m.label,
-      score: avg,
-      count: m.scores.length,
-    }
-  })
+  const averagePercentage = gradedCount > 0 ? Math.round(totalPercentage / gradedCount) : 0
+  const passRate = gradedCount > 0 ? Math.round((passedCount / gradedCount) * 100) : 0
+
+  const performanceTrend = monthsList.map((m) => ({
+    month: m.label,
+    score: m.scores.length > 0 ? Math.round(m.scores.reduce((a, b) => a + b, 0) / m.scores.length) : 0,
+    count: m.scores.length,
+  }))
 
   const monthsWithData = performanceTrend.filter((m) => m.count > 0)
   let trendText = "+0% Trend"
@@ -828,62 +913,29 @@ export async function getAdminMetrics() {
     isPositiveTrend = true
   }
 
-  // 6. Recent Exams, Students, Results lists
-  const { data: recentExamsData } = await supabaseAdmin
-    .from("exams")
-    .select("*")
-    .order("created_at", { ascending: false })
-    .limit(4)
-
-  const { data: recentStudentsData } = await supabaseAdmin
-    .from("users")
-    .select("roll_number, full_name, email, created_at")
-    .eq("role", "student")
-    .order("created_at", { ascending: false })
-    .limit(4)
-
-  const { data: recentAttemptsData } = await supabaseAdmin
-    .from("attempts")
-    .select("*, users(full_name), exams(title)")
-    .neq("status", "in_progress")
-    .order("submitted_at", { ascending: false })
-    .limit(4)
-
-  const mappedRecentResults = []
-  for (const att of recentAttemptsData || []) {
-    // Get exam max marks
-    const questionIds = att.question_order
-    let maxMarks = 0
-    if (questionIds && questionIds.length > 0) {
-      const { data: qData } = await supabaseAdmin
-        .from("questions")
-        .select("marks")
-        .in("id", questionIds)
-      maxMarks = qData?.reduce((sum, q) => sum + Number(q.marks), 0) || 0
-    }
-
-    const scoreVal = Number(att.total_score) || 0
+  const mappedRecentResults = recentAttempts.map((att) => {
+    const questionIds = getAttemptQuestionIds(att)
+    const maxMarks = questionIds.reduce((sum, qId) => sum + (questionMarksMap.get(qId) || 0), 0)
+    const scoreVal = att.total_score !== null ? Number(att.total_score) : (computedScoresMap.get(att.id) ?? 0)
     const pct = maxMarks > 0 ? Math.round((scoreVal / maxMarks) * 100) : 0
-    const outcome = pct >= 50 ? "Pass" : "Fail"
-
-    mappedRecentResults.push({
+    return {
       student: (att.users as any)?.full_name || "Student",
-      code: (att.exams as any)?.title.split(" ")[0] || "EXAM",
+      code: (att.exams as any)?.title?.split(" ")[0] || "EXAM",
       score: `${pct}%`,
       maxScore: "100%",
       date: new Date(att.submitted_at || att.started_at).toLocaleDateString("en-US", {
         month: "short",
         day: "2-digit",
       }),
-      outcome,
-    })
-  }
+      outcome: pct >= 50 ? "Pass" : "Fail",
+    }
+  })
 
   return {
     metrics: {
-      studentsTotal: String(totalStudents || 0),
+      studentsTotal: String(totalStudents),
       studentsActive: String(activeStudents),
-      questionsTotal: String(totalQuestions || 0),
+      questionsTotal: String(totalQuestions),
       examsTotal: String(totalExams),
       examsActive: `${liveExams} Live Now`,
       averagePerformance: `${averagePercentage}%`,
@@ -892,16 +944,16 @@ export async function getAdminMetrics() {
     performanceTrend,
     trendText,
     isPositiveTrend,
-    recentExams: (recentExamsData || []).map((e) => ({
+    recentExams: (recentExamsRes.data || []).map((e) => ({
       id: e.id,
       code: e.title.split(" ")[0] || "EXAM",
       title: e.title,
-      questions: e.num_questions_to_serve || 10,
+      questions: e.num_questions_to_serve || (examQuestionsMap.get(e.id)?.length || 10),
       date: new Date(e.start_time).toLocaleDateString("en-US", { month: "short", day: "2-digit" }),
       duration: `${e.duration_minutes}m`,
-      takers: 0,
+      takers: examTakersMap.get(e.id) || 0,
     })),
-    recentStudents: (recentStudentsData || []).map((s) => ({
+    recentStudents: (recentStudentsRes.data || []).map((s) => ({
       roll: s.roll_number || "N/A",
       name: s.full_name,
       email: s.email || "N/A",
@@ -914,36 +966,33 @@ export async function getAdminMetrics() {
 
 // 11. Get Exams for Public landing page
 export async function getExamsPublic() {
-  const { data, error } = await supabaseAdmin
-    .from("exams")
-    .select("id, title, duration_minutes, start_time, end_time, class_section")
-    .order("created_at", { ascending: false })
+  const [examsRes, eqRes] = await Promise.all([
+    supabaseAdmin
+      .from("exams")
+      .select("id, title, duration_minutes, start_time, end_time, class_section")
+      .order("created_at", { ascending: false }),
+    supabaseAdmin.from("exam_questions").select("exam_id"),
+  ])
 
-  if (error) {
-    console.error("Error fetching public exams:", error)
-    throw new Error(error.message)
+  if (examsRes.error) {
+    console.error("Error fetching public exams:", examsRes.error)
+    throw new Error(examsRes.error.message)
   }
 
-  const results = []
-  for (const exam of data || []) {
-    // Get question count
-    const { count } = await supabaseAdmin
-      .from("exam_questions")
-      .select("question_id", { count: "exact", head: true })
-      .eq("exam_id", exam.id)
-
-    results.push({
-      id: exam.id,
-      title: exam.title,
-      code: exam.title.split(" ")[0] || "EXAM",
-      duration: `${exam.duration_minutes} mins`,
-      questions: count || 0,
-      category: exam.class_section || "General",
-      status: getExamStatus(exam.start_time, exam.end_time),
-    })
+  const countMap = new Map<string, number>()
+  for (const eq of eqRes.data || []) {
+    countMap.set(eq.exam_id, (countMap.get(eq.exam_id) || 0) + 1)
   }
 
-  return results
+  return (examsRes.data || []).map((exam) => ({
+    id: exam.id,
+    title: exam.title,
+    code: exam.title.split(" ")[0] || "EXAM",
+    duration: `${exam.duration_minutes} mins`,
+    questions: countMap.get(exam.id) || 0,
+    category: exam.class_section || "General",
+    status: getExamStatus(exam.start_time, exam.end_time),
+  }))
 }
 
 // 12. Toggle publish/unpublish of exam results
@@ -968,43 +1017,24 @@ export async function togglePublishResults(examId: string, publish: boolean) {
 export async function getExamAttemptsReport(examId: string) {
   await verifyAdmin()
 
-  // 1. Fetch exam details
-  const { data: exam, error: examError } = await supabaseAdmin
-    .from("exams")
-    .select("*")
-    .eq("id", examId)
-    .single()
+  // Execute all 4 queries in parallel batch
+  const [examRes, eqRes, attRes, questionsRes] = await Promise.all([
+    supabaseAdmin.from("exams").select("*").eq("id", examId).single(),
+    supabaseAdmin.from("exam_questions").select("question_id").eq("exam_id", examId),
+    supabaseAdmin.from("attempts").select("*, users(full_name, roll_number, class_section)").eq("exam_id", examId).neq("status", "in_progress"),
+    supabaseAdmin.from("questions").select("id, marks"),
+  ])
 
-  if (examError) throw new Error(examError.message)
+  if (examRes.error) throw new Error(examRes.error.message)
+  if (eqRes.error) throw new Error(eqRes.error.message)
+  if (attRes.error) throw new Error(attRes.error.message)
 
-  // 2. Fetch questions in exam (to calculate max marks)
-  const { data: eqData, error: eqError } = await supabaseAdmin
-    .from("exam_questions")
-    .select("question_id")
-    .eq("exam_id", examId)
+  const exam = examRes.data
+  const questionMarksMap = new Map((questionsRes.data || []).map((q) => [q.id, Number(q.marks)]))
+  const questionIds = (eqRes.data || []).map((x) => x.question_id)
+  const maxMarks = questionIds.reduce((sum, qId) => sum + (questionMarksMap.get(qId) || 0), 0)
 
-  if (eqError) throw new Error(eqError.message)
-
-  const questionIds = eqData.map((x) => x.question_id)
-  let maxMarks = 0
-  if (questionIds.length > 0) {
-    const { data: qData } = await supabaseAdmin
-      .from("questions")
-      .select("marks")
-      .in("id", questionIds)
-    maxMarks = qData?.reduce((sum, q) => sum + Number(q.marks), 0) || 0
-  }
-
-  // 3. Fetch attempts for this exam
-  const { data: attempts, error: attError } = await supabaseAdmin
-    .from("attempts")
-    .select("*, users(full_name, roll_number, class_section)")
-    .eq("exam_id", examId)
-    .neq("status", "in_progress") // only show completed attempts
-
-  if (attError) throw new Error(attError.message)
-
-  const takers = (attempts || []).map((att) => {
+  const takers = (attRes.data || []).map((att) => {
     const scoreVal = Number(att.total_score) || 0
     const pct = maxMarks > 0 ? Math.round((scoreVal / maxMarks) * 100) : 0
     const passed = pct >= 50
@@ -1019,7 +1049,7 @@ export async function getExamAttemptsReport(examId: string) {
       score: scoreVal,
       percentage: pct,
       passed,
-      status: att.status, // "submitted" or "auto_submitted"
+      status: att.status,
     }
   })
 
