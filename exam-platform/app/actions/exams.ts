@@ -145,6 +145,55 @@ export async function createExam(
 export async function deleteExam(examId: string) {
   await verifyAdmin()
 
+  // Step 1: Fetch all attempt IDs for this exam so we can delete their responses
+  const { data: attemptRows, error: attFetchErr } = await supabaseAdmin
+    .from("attempts")
+    .select("id")
+    .eq("exam_id", examId)
+
+  if (attFetchErr) {
+    console.error("Error fetching attempts for exam:", attFetchErr)
+    throw new Error(attFetchErr.message)
+  }
+
+  const attemptIds = (attemptRows || []).map((a) => a.id)
+
+  // Step 2: Delete responses linked to those attempts
+  if (attemptIds.length > 0) {
+    const { error: respErr } = await supabaseAdmin
+      .from("responses")
+      .delete()
+      .in("attempt_id", attemptIds)
+
+    if (respErr) {
+      console.error("Error deleting responses for exam:", respErr)
+      throw new Error(respErr.message)
+    }
+  }
+
+  // Step 3: Delete attempts for this exam
+  const { error: attErr } = await supabaseAdmin
+    .from("attempts")
+    .delete()
+    .eq("exam_id", examId)
+
+  if (attErr) {
+    console.error("Error deleting attempts for exam:", attErr)
+    throw new Error(attErr.message)
+  }
+
+  // Step 4: Delete exam_questions join rows
+  const { error: eqErr } = await supabaseAdmin
+    .from("exam_questions")
+    .delete()
+    .eq("exam_id", examId)
+
+  if (eqErr) {
+    console.error("Error deleting exam_questions for exam:", eqErr)
+    throw new Error(eqErr.message)
+  }
+
+  // Step 5: Delete the exam itself
   const { error } = await supabaseAdmin
     .from("exams")
     .delete()

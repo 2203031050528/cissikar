@@ -35,10 +35,11 @@ import {
   Filter, 
   CheckCircle,
   HelpCircle,
-  AlertTriangle 
+  AlertTriangle,
+  X
 } from "lucide-react"
 
-import { getQuestions, createQuestion, updateQuestion, deleteQuestion, uploadQuestionsCSV } from "@/app/actions/questions"
+import { getQuestions, createQuestion, updateQuestion, deleteQuestion, deleteManyQuestions, uploadQuestionsCSV } from "@/app/actions/questions"
 
 interface Question {
   id: string
@@ -67,6 +68,10 @@ export default function QuestionBankPage() {
   // Pagination State
   const [currentPage, setCurrentPage] = React.useState(1)
   const pageSize = 10
+
+  // Multi-select state
+  const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set())
+  const [isBulkDeleteOpen, setIsBulkDeleteOpen] = React.useState(false)
 
   // Modals state
   const [isAddOpen, setIsAddOpen] = React.useState(false)
@@ -288,6 +293,54 @@ export default function QuestionBankPage() {
     }
   }
 
+  // Multi-select handlers
+  const isAllPageSelected = paginatedQuestions.length > 0 && paginatedQuestions.every((q) => selectedIds.has(q.id))
+  const isIndeterminate = paginatedQuestions.some((q) => selectedIds.has(q.id)) && !isAllPageSelected
+
+  const toggleSelectAll = () => {
+    if (isAllPageSelected) {
+      setSelectedIds((prev) => {
+        const next = new Set(prev)
+        paginatedQuestions.forEach((q) => next.delete(q.id))
+        return next
+      })
+    } else {
+      setSelectedIds((prev) => {
+        const next = new Set(prev)
+        paginatedQuestions.forEach((q) => next.add(q.id))
+        return next
+      })
+    }
+  }
+
+  const toggleSelectOne = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const clearSelection = () => setSelectedIds(new Set())
+
+  const handleBulkDelete = async () => {
+    const ids = Array.from(selectedIds)
+    if (ids.length === 0) return
+    setIsLoading(true)
+    try {
+      await deleteManyQuestions(ids)
+      toast.success(`${ids.length} question${ids.length > 1 ? "s" : ""} deleted successfully.`)
+      setIsBulkDeleteOpen(false)
+      clearSelection()
+      await loadQuestions()
+    } catch (err: any) {
+      console.error(err)
+      toast.error(err.message || "Failed to delete selected questions.")
+      setIsLoading(false)
+    }
+  }
+
   // CSV file reading and parsing
   const handleCSVUpload = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -355,6 +408,38 @@ export default function QuestionBankPage() {
           </Button>
         </div>
       </div>
+
+      {/* Bulk Action Bar */}
+      {selectedIds.size > 0 && (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-2.5 animate-in slide-in-from-top-2 duration-200">
+          <div className="flex items-center gap-2">
+            <CheckCircle className="size-4 text-destructive" />
+            <span className="text-sm font-semibold text-destructive">
+              {selectedIds.size} question{selectedIds.size > 1 ? "s" : ""} selected
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 text-xs text-muted-foreground hover:text-foreground cursor-pointer"
+              onClick={clearSelection}
+            >
+              <X className="size-3 mr-1" />
+              Clear
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              className="h-7 text-xs cursor-pointer gap-1.5"
+              onClick={() => setIsBulkDeleteOpen(true)}
+            >
+              <Trash2 className="size-3" />
+              Delete Selected
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Filter and Search Controls */}
       <Card className="border shadow-xs">
@@ -463,6 +548,16 @@ export default function QuestionBankPage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-10">
+                    <input
+                      type="checkbox"
+                      className="size-3.5 cursor-pointer accent-primary rounded"
+                      checked={isAllPageSelected}
+                      ref={(el) => { if (el) el.indeterminate = isIndeterminate }}
+                      onChange={toggleSelectAll}
+                      aria-label="Select all on this page"
+                    />
+                  </TableHead>
                   <TableHead className="w-[70px]">ID</TableHead>
                   <TableHead className="min-w-[250px] max-w-[400px]">Question Text</TableHead>
                   <TableHead>Subject</TableHead>
@@ -475,7 +570,16 @@ export default function QuestionBankPage() {
               </TableHeader>
               <TableBody>
                 {paginatedQuestions.map((q) => (
-                  <TableRow key={q.id} className="hover:bg-muted/30 transition-colors">
+                  <TableRow key={q.id} className={`hover:bg-muted/30 transition-colors ${selectedIds.has(q.id) ? "bg-destructive/5" : ""}`}>
+                    <TableCell>
+                      <input
+                        type="checkbox"
+                        className="size-3.5 cursor-pointer accent-primary rounded"
+                        checked={selectedIds.has(q.id)}
+                        onChange={() => toggleSelectOne(q.id)}
+                        aria-label={`Select question ${q.id}`}
+                      />
+                    </TableCell>
                     <TableCell className="font-mono text-xs font-bold text-muted-foreground">{q.id}</TableCell>
                     <TableCell className="font-medium text-xs py-3 leading-relaxed">
                       <div className="line-clamp-2">{q.questionText}</div>
@@ -1031,6 +1135,40 @@ export default function QuestionBankPage() {
             </Button>
             <Button type="button" variant="destructive" size="sm" onClick={handleConfirmDelete}>
               Confirm Delete
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Bulk Delete Confirmation Modal */}
+      <Modal
+        isOpen={isBulkDeleteOpen}
+        onClose={setIsBulkDeleteOpen}
+        title={
+          <div className="flex items-center gap-2 text-destructive">
+            <AlertTriangle className="size-5" />
+            <span>Bulk Delete Questions</span>
+          </div>
+        }
+        description={`You are about to permanently delete ${selectedIds.size} question${selectedIds.size > 1 ? "s" : ""} from the question bank.`}
+      >
+        <div className="space-y-4 pt-2">
+          <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-3">
+            <p className="text-xs text-destructive font-semibold mb-1.5 flex items-center gap-1.5">
+              <AlertTriangle className="size-3.5" />
+              This action is irreversible
+            </p>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              All <strong className="text-foreground">{selectedIds.size} selected question{selectedIds.size > 1 ? "s" : ""}</strong> will be permanently removed from the question bank and unlinked from any exams that reference them. This cannot be undone.
+            </p>
+          </div>
+          <div className="flex justify-end gap-2 border-t pt-4 mt-2">
+            <Button type="button" variant="outline" size="sm" onClick={() => setIsBulkDeleteOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="button" variant="destructive" size="sm" className="gap-1.5" onClick={handleBulkDelete}>
+              <Trash2 className="size-3.5" />
+              Delete {selectedIds.size} Question{selectedIds.size > 1 ? "s" : ""}
             </Button>
           </div>
         </div>

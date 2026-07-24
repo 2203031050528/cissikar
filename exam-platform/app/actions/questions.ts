@@ -139,6 +139,36 @@ export async function deleteQuestion(id: string) {
   return { success: true }
 }
 
+export async function deleteManyQuestions(ids: string[]) {
+  await verifyAdmin()
+
+  if (ids.length === 0) return { success: true, deleted: 0 }
+
+  // Remove from exam_questions join table first
+  const { error: eqErr } = await supabaseAdmin
+    .from("exam_questions")
+    .delete()
+    .in("question_id", ids)
+
+  if (eqErr) {
+    console.error("Error removing questions from exams:", eqErr)
+    throw new Error(eqErr.message)
+  }
+
+  // Delete questions
+  const { error } = await supabaseAdmin
+    .from("questions")
+    .delete()
+    .in("id", ids)
+
+  if (error) {
+    console.error("Error bulk deleting questions:", error)
+    throw new Error(error.message)
+  }
+
+  return { success: true, deleted: ids.length }
+}
+
 function parseCSVLine(line: string): string[] {
   const result: string[] = []
   let current = ""
