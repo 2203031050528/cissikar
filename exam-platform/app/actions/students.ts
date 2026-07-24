@@ -113,8 +113,43 @@ export async function updateStudent(
 export async function deleteStudent(id: string) {
   await verifyAdmin()
 
-  // Note: deleting a student will cascade delete their attempts if foreign keys are setup
-  // but let's delete them cleanly.
+  // Step 1: Find all attempts for this student
+  const { data: attempts, error: attFetchErr } = await supabaseAdmin
+    .from("attempts")
+    .select("id")
+    .eq("student_id", id)
+
+  if (attFetchErr) {
+    console.error("Error fetching attempts for student:", attFetchErr)
+    throw new Error(attFetchErr.message)
+  }
+
+  // Step 2: Delete related responses (FK: responses.attempt_id → attempts.id)
+  if (attempts && attempts.length > 0) {
+    const attemptIds = attempts.map((a) => a.id)
+    const { error: respErr } = await supabaseAdmin
+      .from("responses")
+      .delete()
+      .in("attempt_id", attemptIds)
+
+    if (respErr) {
+      console.error("Error deleting responses for student:", respErr)
+      throw new Error(respErr.message)
+    }
+  }
+
+  // Step 3: Delete all attempts for this student (FK: attempts.student_id → users.id)
+  const { error: attErr } = await supabaseAdmin
+    .from("attempts")
+    .delete()
+    .eq("student_id", id)
+
+  if (attErr) {
+    console.error("Error deleting attempts for student:", attErr)
+    throw new Error(attErr.message)
+  }
+
+  // Step 4: Now safely delete the student user record
   const { error } = await supabaseAdmin
     .from("users")
     .delete()
@@ -127,6 +162,7 @@ export async function deleteStudent(id: string) {
 
   return { success: true }
 }
+
 
 function parseCSVLine(line: string): string[] {
   const result: string[] = []
